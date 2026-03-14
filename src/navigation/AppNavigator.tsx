@@ -15,12 +15,28 @@ export function AppNavigator(): React.JSX.Element {
       initialRouteName="OnboardingScreen"
       screenOptions={{
         headerTitleAlign: 'center',
+        headerStyle: {
+          backgroundColor: '#FFFFFF',
+        },
+        headerTitleStyle: {
+          fontWeight: '700',
+          color: '#111827',
+        },
+        headerShadowVisible: false,
       }}>
-      <Stack.Screen name="OnboardingScreen" component={OnboardingScreen} />
-      <Stack.Screen name="DashboardScreen" component={DashboardScreen} />
-      <Stack.Screen name="StatsScreen" component={StatsScreen} />
-      <Stack.Screen name="SettingsScreen" component={SettingsScreen} />
-      <Stack.Screen name="LockScreen" component={LockScreen} />
+      <Stack.Screen
+        name="OnboardingScreen"
+        component={OnboardingScreen}
+        options={{ title: 'Get Started' }}
+      />
+      <Stack.Screen
+        name="DashboardScreen"
+        component={DashboardScreen}
+        options={{ title: 'Dashboard' }}
+      />
+      <Stack.Screen name="StatsScreen" component={StatsScreen} options={{ title: 'Statistics' }} />
+      <Stack.Screen name="SettingsScreen" component={SettingsScreen} options={{ title: 'Settings' }} />
+      <Stack.Screen name="LockScreen" component={LockScreen} options={{ title: 'Lock' }} />
     </Stack.Navigator>
   );
 }
