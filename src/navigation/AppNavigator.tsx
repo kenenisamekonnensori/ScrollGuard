@@ -26,30 +26,47 @@ function MainTabs(): React.JSX.Element {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
-        headerTitleAlign: 'center',
+        headerShown: false,
+        tabBarHideOnKeyboard: true,
         tabBarShowLabel: true,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textMuted,
         tabBarStyle: {
           backgroundColor: colors.surface,
           borderTopColor: colors.border,
-          height: 66,
-          paddingBottom: 8,
-          paddingTop: 8,
+          borderTopWidth: 1,
+          height: 70,
+          paddingBottom: 9,
+          paddingTop: 7,
+        },
+        tabBarItemStyle: {
+          paddingVertical: 2,
         },
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: 10,
           fontWeight: '700',
+          letterSpacing: 0.3,
         },
-        tabBarIcon: ({ color }) => {
+        tabBarIcon: ({ color, focused }) => {
           const iconMap: Record<keyof MainTabParamList, string> = {
-            DashboardScreen: '🏠',
-            StatsScreen: '📊',
-            FocusModeScreen: '🎯',
-            NotificationsScreen: '🔔',
-            SettingsScreen: '⚙️',
+            DashboardScreen: '⌂',
+            StatsScreen: '▦',
+            FocusModeScreen: '◎',
+            NotificationsScreen: '◉',
+            SettingsScreen: '⚙',
           };
-          return <Text style={{ fontSize: 16, color }}>{iconMap[route.name]}</Text>;
+
+          return (
+            <Text
+              style={{
+                fontSize: focused ? 18 : 16,
+                color,
+                fontWeight: focused ? '800' : '600',
+                marginBottom: 2,
+              }}>
+              {iconMap[route.name]}
+            </Text>
+          );
         },
       })}>
       <Tab.Screen name="DashboardScreen" component={DashboardScreen} options={{ title: 'Home' }} />
@@ -71,6 +88,11 @@ export function AppNavigator(): React.JSX.Element {
       initialRouteName="SplashScreen"
       screenOptions={{
         headerTitleAlign: 'center',
+        animation: 'slide_from_right',
+        gestureEnabled: true,
+        contentStyle: {
+          backgroundColor: colors.background,
+        },
         headerStyle: {
           backgroundColor: colors.surface,
         },
@@ -84,27 +106,56 @@ export function AppNavigator(): React.JSX.Element {
       <Stack.Screen
         name="OnboardingScreen"
         component={OnboardingScreen}
-        options={{ title: 'Get Started' }}
+        options={{ headerShown: false }}
       />
       <Stack.Screen
         name="PermissionsSetupScreen"
         component={PermissionsSetupScreen}
-        options={{ title: 'Permissions' }}
+        options={{ headerShown: false }}
       />
       <Stack.Screen name="MainTabs" component={MainTabs} options={{ headerShown: false }} />
       <Stack.Screen name="ProfileScreen" component={ProfileScreen} options={{ title: 'Profile' }} />
-      <Stack.Screen name="PremiumScreen" component={PremiumScreen} options={{ title: 'Premium' }} />
-      <Stack.Screen name="LoginScreen" component={LoginScreen} options={{ title: 'Login' }} />
-      <Stack.Screen name="SignUpScreen" component={SignUpScreen} options={{ title: 'Sign Up' }} />
+      <Stack.Screen
+        name="PremiumScreen"
+        component={PremiumScreen}
+        options={{
+          title: 'Premium',
+          presentation: 'modal',
+          animation: 'slide_from_bottom',
+        }}
+      />
+      <Stack.Screen
+        name="LoginScreen"
+        component={LoginScreen}
+        options={{
+          headerShown: false,
+          presentation: 'card',
+        }}
+      />
+      <Stack.Screen
+        name="SignUpScreen"
+        component={SignUpScreen}
+        options={{
+          headerShown: false,
+          presentation: 'card',
+        }}
+      />
       <Stack.Screen
         name="ForgotPasswordScreen"
         component={ForgotPasswordScreen}
-        options={{ title: 'Reset Password' }}
+        options={{
+          headerShown: false,
+          presentation: 'card',
+        }}
       />
       <Stack.Screen
         name="LockScreen"
         component={LockScreen}
-        options={{ title: 'Time Limit Reached', presentation: 'modal' }}
+        options={{
+          headerShown: false,
+          presentation: 'fullScreenModal',
+          animation: 'fade_from_bottom',
+        }}
       />
     </Stack.Navigator>
   );
