@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { Screen } from '../components/Screen';
 import { colors } from '../theme/tokens';
 
 export function SplashScreen(): React.JSX.Element {
@@ -15,7 +16,7 @@ export function SplashScreen(): React.JSX.Element {
   }, [navigation]);
 
   return (
-    <View style={styles.container}>
+    <Screen style={styles.container}>
       <View style={styles.topBar} />
       <View style={styles.iconTile}>
         <Text style={styles.iconGlyph}>🛡️</Text>
@@ -25,7 +26,7 @@ export function SplashScreen(): React.JSX.Element {
       <View style={styles.loaderTrack}>
         <View style={styles.loaderFill} />
       </View>
-    </View>
+    </Screen>
   );
 }
 

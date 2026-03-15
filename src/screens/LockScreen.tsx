@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { Screen } from '../components/Screen';
 import { PrimaryButton } from '../components/ui/PrimaryButton';
 import { colors, radii, spacing } from '../theme/tokens';
 
@@ -8,7 +9,7 @@ export function LockScreen(): React.JSX.Element {
   const navigation = useNavigation<any>();
 
   return (
-    <View style={styles.safeArea}>
+    <Screen style={styles.safeArea}>
       <View style={styles.container}>
         <View style={styles.visualWrap}>
           <Text style={styles.visualIcon}>⏳</Text>
@@ -26,7 +27,7 @@ export function LockScreen(): React.JSX.Element {
         <PrimaryButton label="Unlock with Premium" variant="secondary" onPress={() => navigation.navigate('PremiumScreen')} />
         <Text style={styles.premiumTag}>Extend limit • PREMIUM</Text>
       </View>
-    </View>
+    </Screen>
   );
 }
 

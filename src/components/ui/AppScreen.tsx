@@ -1,5 +1,6 @@
 import React from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Screen } from '../Screen';
 import { colors, spacing, typography } from '../../theme/tokens';
 
 type AppScreenProps = {
@@ -21,9 +22,9 @@ export function AppScreen({ title, subtitle, children, noScroll }: AppScreenProp
   );
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <Screen style={styles.safeArea}>
       {noScroll ? content : <ScrollView contentContainerStyle={styles.scrollContainer}>{content}</ScrollView>}
-    </SafeAreaView>
+    </Screen>
   );
 }
 

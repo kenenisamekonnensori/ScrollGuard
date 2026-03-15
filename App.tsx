@@ -8,7 +8,11 @@ function App(): React.JSX.Element {
   return (
     <SafeAreaProvider>
       <NavigationContainer>
-        <StatusBar barStyle="dark-content" />
+        <StatusBar
+          barStyle="dark-content"
+          backgroundColor="#ffffff"
+          translucent={false}
+        />
         <AppNavigator />
       </NavigationContainer>
     </SafeAreaProvider>
