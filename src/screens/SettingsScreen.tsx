@@ -1,139 +1,67 @@
 import React from 'react';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { InfoCard } from '../components/InfoCard';
-import { RootStackParamList } from '../navigation/types';
+import { StyleSheet, Text } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { AppScreen } from '../components/ui/AppScreen';
+import { MetricRow } from '../components/ui/MetricRow';
+import { PrimaryButton } from '../components/ui/PrimaryButton';
+import { SectionCard } from '../components/ui/SectionCard';
 import { useSettingsStore } from '../store/settingsStore';
+import { colors } from '../theme/tokens';
 
-type Props = NativeStackScreenProps<RootStackParamList, 'SettingsScreen'>;
-
-export function SettingsScreen({ navigation }: Props): React.JSX.Element {
+export function SettingsScreen(): React.JSX.Element {
+  const navigation = useNavigation<any>();
   const userSettings = useSettingsStore(state => state.userSettings);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.title}>Limits & Controls</Text>
-        <Text style={styles.subtitle}>Current settings loaded from local MMKV storage.</Text>
+    <AppScreen
+      title="Settings"
+      subtitle="Customize limits, lock behavior, alerts, and account controls.">
+      <Text style={styles.sectionLabel}>Usage Limits</Text>
+      <SectionCard title="Daily Limits">
+        <MetricRow label="TikTok" value={`${userSettings.tiktokLimitMinutes} min`} />
+        <MetricRow label="Instagram" value={`${userSettings.instagramLimitMinutes} min`} />
+        <MetricRow label="YouTube" value={`${userSettings.youtubeLimitMinutes} min`} />
+      </SectionCard>
 
-        <InfoCard title="Daily app limits">
-          <View style={styles.metricRow}>
-            <Text style={styles.metricLabel}>TikTok</Text>
-            <Text style={styles.metricValue}>{userSettings.tiktokLimitMinutes} min</Text>
-          </View>
-          <View style={styles.metricRow}>
-            <Text style={styles.metricLabel}>Instagram</Text>
-            <Text style={styles.metricValue}>{userSettings.instagramLimitMinutes} min</Text>
-          </View>
-          <View style={styles.metricRow}>
-            <Text style={styles.metricLabel}>YouTube</Text>
-            <Text style={styles.metricValue}>{userSettings.youtubeLimitMinutes} min</Text>
-          </View>
-        </InfoCard>
+      <Text style={styles.sectionLabel}>Focus Mode</Text>
+      <SectionCard title="Protection Rules">
+        <MetricRow label="Lock duration" value={`${userSettings.lockDurationMinutes} min`} />
+        <MetricRow label="Warnings" value="50%, 75%, 100%" />
+        <Text style={styles.note}>When a limit is exceeded, lock overlay blocks the selected app until timer ends.</Text>
+      </SectionCard>
 
-        <InfoCard title="Lock behavior">
-          <View style={styles.metricRow}>
-            <Text style={styles.metricLabel}>Lock Duration</Text>
-            <Text style={styles.metricValue}>{userSettings.lockDurationMinutes} min</Text>
-          </View>
-          <Text style={styles.note}>When a limit is exceeded, LockScreen is shown until the timer ends.</Text>
-        </InfoCard>
+      <Text style={styles.sectionLabel}>Account & Privacy</Text>
+      <SectionCard title="Account & Privacy">
+        <PrimaryButton label="Open Profile" variant="secondary" onPress={() => navigation.navigate('ProfileScreen')} />
+        <PrimaryButton label="Manage Premium" variant="secondary" onPress={() => navigation.navigate('PremiumScreen')} />
+        <PrimaryButton label="Permissions Setup" variant="ghost" onPress={() => navigation.navigate('PermissionsSetupScreen')} />
+      </SectionCard>
 
-        <InfoCard title="Next implementation steps">
-          <Text style={styles.bullet}>• Add editable form inputs for each limit value.</Text>
-          <Text style={styles.bullet}>• Add permission deep links from onboarding/settings.</Text>
-          <Text style={styles.bullet}>• Connect limit updates to blocking and notifications.</Text>
-        </InfoCard>
-
-        <View style={styles.actionRow}>
-          <Pressable onPress={() => navigation.navigate('DashboardScreen')} style={styles.secondaryButton}>
-            <Text style={styles.secondaryButtonText}>Back</Text>
-          </Pressable>
-          <Pressable onPress={() => navigation.navigate('LockScreen')} style={styles.primaryButton}>
-            <Text style={styles.primaryButtonText}>Preview Lock UI</Text>
-          </Pressable>
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+      <Text style={styles.legal}>Terms of Service • Privacy Policy • ScrollGuard v2.4.0</Text>
+    </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#F3F4F6',
-  },
-  container: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 28,
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 6,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 16,
-  },
-  metricRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  metricLabel: {
-    fontSize: 14,
-    color: '#374151',
-  },
-  metricValue: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#111827',
+  sectionLabel: {
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    color: colors.primaryDark,
+    fontWeight: '800',
+    marginBottom: -4,
   },
   note: {
-    marginTop: 4,
+    marginTop: 2,
     fontSize: 13,
     lineHeight: 18,
-    color: '#4B5563',
+    color: colors.textMuted,
   },
-  bullet: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: '#374151',
-  },
-  actionRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  secondaryButton: {
-    flex: 1,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    paddingVertical: 13,
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-  },
-  secondaryButtonText: {
-    color: '#111827',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  primaryButton: {
-    flex: 1,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#111827',
-    paddingVertical: 13,
-    alignItems: 'center',
-    backgroundColor: '#111827',
-  },
-  primaryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
+  legal: {
+    textAlign: 'center',
+    color: '#94A3B8',
+    fontSize: 11,
+    marginTop: 2,
+    marginBottom: 10,
   },
 });

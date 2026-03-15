@@ -1,133 +1,247 @@
 import React from 'react';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { InfoCard } from '../components/InfoCard';
-import { RootStackParamList } from '../navigation/types';
+import { StyleSheet, Text, View } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { AppScreen } from '../components/ui/AppScreen';
+import { PrimaryButton } from '../components/ui/PrimaryButton';
+import { SectionCard } from '../components/ui/SectionCard';
+import { useUsageStore } from '../store/usageStore';
+import { colors, typography } from '../theme/tokens';
 
-type Props = NativeStackScreenProps<RootStackParamList, 'DashboardScreen'>;
+export function DashboardScreen(): React.JSX.Element {
+  const navigation = useNavigation<any>();
+  const usageStats = useUsageStore(state => state.usageStats);
+  const videoCounts = useUsageStore(state => state.videoCounts);
+  const totalSeconds = Object.values(usageStats).reduce((acc, value) => acc + value, 0);
+  const totalVideos = Object.values(videoCounts).reduce((acc, value) => acc + value, 0);
 
-export function DashboardScreen({ navigation }: Props): React.JSX.Element {
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.title}>Today’s Focus Overview</Text>
-        <Text style={styles.subtitle}>Live usage cards and quick actions for your scrolling limits.</Text>
-
-        <InfoCard title="Today at a glance">
-          <View style={styles.metricRow}>
-            <Text style={styles.metricLabel}>Time Spent</Text>
-            <Text style={styles.metricValue}>32 min</Text>
-          </View>
-          <View style={styles.metricRow}>
-            <Text style={styles.metricLabel}>Videos Watched</Text>
-            <Text style={styles.metricValue}>57</Text>
-          </View>
-        </InfoCard>
-
-        <InfoCard title="App usage summary">
-          <View style={styles.metricRow}>
-            <Text style={styles.metricLabel}>TikTok</Text>
-            <Text style={styles.metricValue}>22 min • 41 videos</Text>
-          </View>
-          <View style={styles.metricRow}>
-            <Text style={styles.metricLabel}>Instagram</Text>
-            <Text style={styles.metricValue}>8 min • 12 videos</Text>
-          </View>
-          <View style={styles.metricRow}>
-            <Text style={styles.metricLabel}>YouTube</Text>
-            <Text style={styles.metricValue}>2 min • 4 videos</Text>
-          </View>
-        </InfoCard>
-
-        <InfoCard title="Current status">
-          <Text style={styles.statusText}>• Limits active for all monitored apps.</Text>
-          <Text style={styles.statusText}>• Next warning threshold at 75% usage.</Text>
-          <Text style={styles.statusText}>• Blocking service ready after limit exceeded.</Text>
-        </InfoCard>
-
-        <View style={styles.actionRow}>
-          <Pressable
-            onPress={() => navigation.navigate('StatsScreen')}
-            style={[styles.actionButton, styles.primaryAction]}>
-            <Text style={styles.primaryActionText}>Open Stats</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => navigation.navigate('SettingsScreen')}
-            style={styles.actionButton}>
-            <Text style={styles.secondaryActionText}>Open Settings</Text>
-          </Pressable>
+    <AppScreen
+      title="Your Focus Dashboard"
+      subtitle="Live control panel for today’s short-video behavior and lock protection.">
+      <SectionCard>
+        <View style={styles.heroHead}>
+          <Text style={styles.heroLabel}>Daily Focus</Text>
+          <Text style={styles.chip}>85% Limit Used</Text>
         </View>
-      </ScrollView>
-    </SafeAreaView>
+        <Text style={styles.heroValue}>{Math.floor(totalSeconds / 60)} min</Text>
+        <Text style={styles.heroSub}>{totalVideos} videos watched • 45m remaining</Text>
+        <View style={styles.progressTrack}>
+          <View style={styles.progressFill} />
+        </View>
+      </SectionCard>
+
+      <View style={styles.alertBox}>
+        <Text style={styles.alertText}>You've watched a lot today — consider taking a break.</Text>
+      </View>
+
+      <SectionCard title="App Breakdown">
+        <View style={styles.appRow}>
+          <View style={styles.appInfo}>
+            <View style={styles.appIconWrap}><Text style={styles.appIcon}>▶️</Text></View>
+            <View>
+              <Text style={styles.appName}>TikTok</Text>
+              <Text style={styles.appSub}>42 videos watched</Text>
+            </View>
+          </View>
+          <View style={styles.appRight}>
+            <Text style={styles.appTime}>1h 05m</Text>
+            <View style={styles.ticks}>
+              <View style={styles.tickOn} />
+              <View style={styles.tickOn} />
+              <View style={styles.tickOn} />
+              <View style={styles.tickOff} />
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.appRow}>
+          <View style={styles.appInfo}>
+            <View style={styles.appIconWrap}><Text style={styles.appIcon}>📷</Text></View>
+            <View>
+              <Text style={styles.appName}>Instagram</Text>
+              <Text style={styles.appSub}>30 reels watched</Text>
+            </View>
+          </View>
+          <View style={styles.appRight}>
+            <Text style={styles.appTime}>45m</Text>
+            <View style={styles.ticks}>
+              <View style={styles.tickOn} />
+              <View style={styles.tickOn} />
+              <View style={styles.tickOff} />
+              <View style={styles.tickOff} />
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.appRowNoBorder}>
+          <View style={styles.appInfo}>
+            <View style={styles.appIconWrap}><Text style={styles.appIcon}>📺</Text></View>
+            <View>
+              <Text style={styles.appName}>YouTube</Text>
+              <Text style={styles.appSub}>15 shorts watched</Text>
+            </View>
+          </View>
+          <View style={styles.appRight}>
+            <Text style={styles.appTime}>25m</Text>
+            <View style={styles.ticks}>
+              <View style={styles.tickOn} />
+              <View style={styles.tickOff} />
+              <View style={styles.tickOff} />
+              <View style={styles.tickOff} />
+            </View>
+          </View>
+        </View>
+      </SectionCard>
+
+      <SectionCard title="Quick Actions">
+        <PrimaryButton label="Open Premium to unlock extra time" onPress={() => navigation.navigate('PremiumScreen')} />
+        <PrimaryButton label="Preview Lock Overlay" variant="secondary" onPress={() => navigation.navigate('LockScreen')} />
+        <PrimaryButton label="Open Profile" variant="ghost" onPress={() => navigation.navigate('ProfileScreen')} />
+      </SectionCard>
+
+      <View style={styles.badgeRow}>
+        <Text style={styles.badge}>Streak: 4 days</Text>
+        <Text style={styles.badge}>Within limit: 78%</Text>
+      </View>
+    </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#F3F4F6',
+  heroLabel: {
+    color: colors.textMuted,
+    fontSize: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    fontWeight: '600',
   },
-  container: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 28,
+  heroHead: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  title: {
-    fontSize: 26,
+  chip: {
+    color: colors.primaryDark,
+    backgroundColor: '#DDF7FD',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    fontSize: 10,
     fontWeight: '700',
-    color: '#111827',
-    marginBottom: 6,
   },
-  subtitle: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 16,
+  heroValue: {
+    fontSize: 38,
+    lineHeight: 44,
+    color: colors.primaryDark,
+    fontWeight: '800',
   },
-  metricRow: {
+  heroSub: {
+    color: colors.textMuted,
+    fontSize: 13,
+  },
+  progressTrack: {
+    marginTop: 2,
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: '#D6EEF4',
+    overflow: 'hidden',
+  },
+  progressFill: {
+    width: '85%',
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: colors.primary,
+  },
+  alertBox: {
+    borderWidth: 1,
+    borderColor: '#B6E9F4',
+    backgroundColor: '#EEF9FC',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  alertText: {
+    color: '#0F3B47',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  appRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 10,
+    marginBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E9F2F4',
+  },
+  appRowNoBorder: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  metricLabel: {
-    fontSize: 14,
-    color: '#374151',
-  },
-  metricValue: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  statusText: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: '#374151',
-  },
-  actionRow: {
+  appInfo: {
     flexDirection: 'row',
     gap: 10,
-    marginTop: 2,
-  },
-  actionButton: {
-    flex: 1,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    paddingVertical: 12,
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
   },
-  primaryAction: {
-    backgroundColor: '#111827',
-    borderColor: '#111827',
+  appIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F0F6F8',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  primaryActionText: {
-    color: '#FFFFFF',
+  appIcon: {
+    fontSize: 15,
+  },
+  appName: {
+    color: colors.text,
     fontSize: 14,
     fontWeight: '700',
   },
-  secondaryActionText: {
-    color: '#111827',
-    fontSize: 14,
+  appSub: {
+    color: colors.textMuted,
+    fontSize: 11,
+    marginTop: 1,
+  },
+  appRight: {
+    alignItems: 'flex-end',
+    gap: 4,
+  },
+  appTime: {
+    color: colors.primaryDark,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  ticks: {
+    flexDirection: 'row',
+    gap: 2,
+  },
+  tickOn: {
+    width: 4,
+    height: 12,
+    borderRadius: 4,
+    backgroundColor: colors.primary,
+  },
+  tickOff: {
+    width: 4,
+    height: 12,
+    borderRadius: 4,
+    backgroundColor: '#CFE8EE',
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  badge: {
+    backgroundColor: colors.surfaceAlt,
+    color: colors.text,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 12,
     fontWeight: '600',
   },
 });
