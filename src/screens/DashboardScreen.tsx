@@ -5,7 +5,40 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { PrimaryButton } from '../components/ui/PrimaryButton';
 import { SectionCard } from '../components/ui/SectionCard';
 import { useUsageStore } from '../store/usageStore';
-import { colors, typography } from '../theme/tokens';
+import { colors } from '../theme/tokens';
+
+const MONITORED_APPS = [
+  {
+    packageName: 'com.zhiliaoapp.musically',
+    appName: 'TikTok',
+    icon: '▶️',
+  },
+  {
+    packageName: 'com.instagram.android',
+    appName: 'Instagram',
+    icon: '📷',
+  },
+  {
+    packageName: 'com.google.android.youtube',
+    appName: 'YouTube',
+    icon: '📺',
+  },
+];
+
+function formatMinutes(seconds: number): number {
+  return Math.floor(seconds / 60);
+}
+
+function formatDuration(seconds: number): string {
+  const minutes = formatMinutes(seconds);
+  if (minutes >= 60) {
+    const hours = Math.floor(minutes / 60);
+    const remainderMinutes = minutes % 60;
+    return `${hours}h ${remainderMinutes.toString().padStart(2, '0')}m`;
+  }
+
+  return `${minutes}m`;
+}
 
 export function DashboardScreen(): React.JSX.Element {
   const navigation = useNavigation<any>();
@@ -13,85 +46,48 @@ export function DashboardScreen(): React.JSX.Element {
   const videoCounts = useUsageStore(state => state.videoCounts);
   const totalSeconds = Object.values(usageStats).reduce((acc, value) => acc + value, 0);
   const totalVideos = Object.values(videoCounts).reduce((acc, value) => acc + value, 0);
+  const hasUsageData = totalSeconds > 0 || totalVideos > 0;
 
   return (
     <AppScreen
       title="Your Focus Dashboard"
       subtitle="Live control panel for today’s short-video behavior and lock protection.">
       <SectionCard>
-        <View style={styles.heroHead}>
-          <Text style={styles.heroLabel}>Daily Focus</Text>
-          <Text style={styles.chip}>85% Limit Used</Text>
-        </View>
+        <Text style={styles.heroLabel}>Time spent today</Text>
         <Text style={styles.heroValue}>{Math.floor(totalSeconds / 60)} min</Text>
-        <Text style={styles.heroSub}>{totalVideos} videos watched • 45m remaining</Text>
-        <View style={styles.progressTrack}>
-          <View style={styles.progressFill} />
-        </View>
+        <Text style={styles.heroSub}>Videos watched: {totalVideos}</Text>
       </SectionCard>
 
-      <View style={styles.alertBox}>
-        <Text style={styles.alertText}>You've watched a lot today — consider taking a break.</Text>
-      </View>
+      <SectionCard title="App usage summary">
+        {MONITORED_APPS.map((app, index) => {
+          const seconds = usageStats[app.packageName] ?? 0;
+          const videos = videoCounts[app.packageName] ?? 0;
+          const isLast = index === MONITORED_APPS.length - 1;
 
-      <SectionCard title="App Breakdown">
-        <View style={styles.appRow}>
-          <View style={styles.appInfo}>
-            <View style={styles.appIconWrap}><Text style={styles.appIcon}>▶️</Text></View>
-            <View>
-              <Text style={styles.appName}>TikTok</Text>
-              <Text style={styles.appSub}>42 videos watched</Text>
+          return (
+            <View key={app.packageName} style={isLast ? styles.appRowNoBorder : styles.appRow}>
+              <View style={styles.appInfo}>
+                <View style={styles.appIconWrap}>
+                  <Text style={styles.appIcon}>{app.icon}</Text>
+                </View>
+                <View>
+                  <Text style={styles.appName}>{app.appName}</Text>
+                  <Text style={styles.appSub}>Videos: {videos}</Text>
+                </View>
+              </View>
+              <View style={styles.appRight}>
+                <Text style={styles.appTime}>Time: {formatDuration(seconds)}</Text>
+              </View>
             </View>
-          </View>
-          <View style={styles.appRight}>
-            <Text style={styles.appTime}>1h 05m</Text>
-            <View style={styles.ticks}>
-              <View style={styles.tickOn} />
-              <View style={styles.tickOn} />
-              <View style={styles.tickOn} />
-              <View style={styles.tickOff} />
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.appRow}>
-          <View style={styles.appInfo}>
-            <View style={styles.appIconWrap}><Text style={styles.appIcon}>📷</Text></View>
-            <View>
-              <Text style={styles.appName}>Instagram</Text>
-              <Text style={styles.appSub}>30 reels watched</Text>
-            </View>
-          </View>
-          <View style={styles.appRight}>
-            <Text style={styles.appTime}>45m</Text>
-            <View style={styles.ticks}>
-              <View style={styles.tickOn} />
-              <View style={styles.tickOn} />
-              <View style={styles.tickOff} />
-              <View style={styles.tickOff} />
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.appRowNoBorder}>
-          <View style={styles.appInfo}>
-            <View style={styles.appIconWrap}><Text style={styles.appIcon}>📺</Text></View>
-            <View>
-              <Text style={styles.appName}>YouTube</Text>
-              <Text style={styles.appSub}>15 shorts watched</Text>
-            </View>
-          </View>
-          <View style={styles.appRight}>
-            <Text style={styles.appTime}>25m</Text>
-            <View style={styles.ticks}>
-              <View style={styles.tickOn} />
-              <View style={styles.tickOff} />
-              <View style={styles.tickOff} />
-              <View style={styles.tickOff} />
-            </View>
-          </View>
-        </View>
+          );
+        })}
       </SectionCard>
+
+      {!hasUsageData ? (
+        <View style={styles.alertBox}>
+          <Text style={styles.alertText}>No usage tracked yet. Start scroll detection to see live stats.</Text>
+        </View>
+      ) : null}
 
       <SectionCard title="Quick Actions">
         <PrimaryButton label="Open Premium to unlock extra time" onPress={() => navigation.navigate('PremiumScreen')} />
@@ -115,20 +111,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
     fontWeight: '600',
   },
-  heroHead: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  chip: {
-    color: colors.primaryDark,
-    backgroundColor: '#DDF7FD',
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    fontSize: 10,
-    fontWeight: '700',
-  },
   heroValue: {
     fontSize: 38,
     lineHeight: 44,
@@ -138,19 +120,6 @@ const styles = StyleSheet.create({
   heroSub: {
     color: colors.textMuted,
     fontSize: 13,
-  },
-  progressTrack: {
-    marginTop: 2,
-    height: 6,
-    borderRadius: 999,
-    backgroundColor: '#D6EEF4',
-    overflow: 'hidden',
-  },
-  progressFill: {
-    width: '85%',
-    height: '100%',
-    borderRadius: 999,
-    backgroundColor: colors.primary,
   },
   alertBox: {
     borderWidth: 1,
@@ -213,22 +182,6 @@ const styles = StyleSheet.create({
     color: colors.primaryDark,
     fontSize: 13,
     fontWeight: '800',
-  },
-  ticks: {
-    flexDirection: 'row',
-    gap: 2,
-  },
-  tickOn: {
-    width: 4,
-    height: 12,
-    borderRadius: 4,
-    backgroundColor: colors.primary,
-  },
-  tickOff: {
-    width: 4,
-    height: 12,
-    borderRadius: 4,
-    backgroundColor: '#CFE8EE',
   },
   badgeRow: {
     flexDirection: 'row',
