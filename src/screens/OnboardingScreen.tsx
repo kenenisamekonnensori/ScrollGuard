@@ -1,10 +1,24 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Linking, Platform, StyleSheet, Text, View } from 'react-native';
 import { AppScreen } from '../components/ui/AppScreen';
 import { PrimaryButton } from '../components/ui/PrimaryButton';
 import { SectionCard } from '../components/ui/SectionCard';
 import { colors, typography } from '../theme/tokens';
 import { useNavigation } from '@react-navigation/native';
+
+async function openAndroidSettings(action: string): Promise<void> {
+  if (Platform.OS === 'android' && typeof Linking.sendIntent === 'function') {
+    try {
+      await Linking.sendIntent(action);
+      return;
+    } catch {
+      await Linking.openSettings();
+      return;
+    }
+  }
+
+  await Linking.openSettings();
+}
 
 export function OnboardingScreen(): React.JSX.Element {
   const navigation = useNavigation<any>();
@@ -12,7 +26,7 @@ export function OnboardingScreen(): React.JSX.Element {
   return (
     <AppScreen
       title="Break the Scroll Loop"
-      subtitle="Three quick steps to understand your pattern, track usage, and set limits that actually stick.">
+      subtitle="Understand your usage, enable required permissions, and set limits that protect your focus.">
       <View style={styles.heroPanel}>
         <View style={styles.heroGlow} />
         <Text style={styles.heroTitle}>Endless scrolling is stealing your time</Text>
@@ -32,8 +46,27 @@ export function OnboardingScreen(): React.JSX.Element {
         <Text style={styles.bullet}>• Warning and lock thresholds</Text>
       </SectionCard>
 
-      <SectionCard title="Step 3 — Limits that protect focus">
-        <Text style={styles.body}>Set limits, receive warnings, and activate lock overlay when needed.</Text>
+      <SectionCard title="Required permissions">
+        <Text style={styles.body}>ScrollGuard needs these Android permissions to work correctly:</Text>
+        <Text style={styles.bullet}>• Usage Access — read app usage duration</Text>
+        <Text style={styles.bullet}>• Accessibility Service — detect scroll/foreground app</Text>
+        <Text style={styles.bullet}>• Notifications — send warnings and limit alerts</Text>
+
+        <PrimaryButton
+          label="Open Usage Access Settings"
+          variant="secondary"
+          onPress={() => void openAndroidSettings('android.settings.USAGE_ACCESS_SETTINGS')}
+        />
+        <PrimaryButton
+          label="Open Accessibility Settings"
+          variant="secondary"
+          onPress={() => void openAndroidSettings('android.settings.ACCESSIBILITY_SETTINGS')}
+        />
+        <PrimaryButton
+          label="Open Notification Settings"
+          variant="secondary"
+          onPress={() => void openAndroidSettings('android.settings.APP_NOTIFICATION_SETTINGS')}
+        />
       </SectionCard>
 
       <View style={styles.stepRow}>
