@@ -11,7 +11,12 @@ export type RootStackParamList = {
   OnboardingScreen: undefined;
   PermissionsSetupScreen: undefined;
   MainTabs: undefined;
-  LockScreen: undefined;
+  LockScreen:
+    | {
+        app?: string;
+        lockedUntil?: number;
+      }
+    | undefined;
   ProfileScreen: undefined;
   PremiumScreen: undefined;
   LoginScreen: undefined;
