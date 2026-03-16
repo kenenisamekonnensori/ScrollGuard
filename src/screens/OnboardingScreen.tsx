@@ -12,16 +12,35 @@ async function openAndroidSettings(action: string): Promise<void> {
       await Linking.sendIntent(action);
       return;
     } catch {
-      await Linking.openSettings();
-      return;
+      try {
+        await Linking.openSettings();
+        return;
+      } catch {
+        if (__DEV__) {
+          console.warn('[OnboardingScreen] Failed to open Android intent and app settings fallback.');
+        }
+        return;
+      }
     }
   }
 
-  await Linking.openSettings();
+  try {
+    await Linking.openSettings();
+  } catch {
+    if (__DEV__) {
+      console.warn('[OnboardingScreen] Failed to open app settings for current platform.');
+    }
+  }
 }
 
 async function openAppSettings(): Promise<void> {
-  await Linking.openSettings();
+  try {
+    await Linking.openSettings();
+  } catch {
+    if (__DEV__) {
+      console.warn('[OnboardingScreen] Failed to open app settings.');
+    }
+  }
 }
 
 export function OnboardingScreen(): React.JSX.Element {

@@ -25,8 +25,9 @@ type ScrollDetectionModuleContract = {
  * Minimal contract expected from the native AppBlocking module.
  */
 type AppBlockingModuleContract = {
-  blockApp?: (packageName: string, durationMinutes?: number) => Promise<void>;
+  blockApp?: (packageName: string, durationMinutes: number) => Promise<void>;
   unblockApp?: (packageName: string) => Promise<void>;
+  isAppBlocked?: (packageName: string) => Promise<boolean>;
 };
 
 const { AppUsageModule, ScrollDetectionModule, AppBlockingModule } =
@@ -70,7 +71,7 @@ export function stopScrollDetection(): void {
  */
 export async function blockApp(
   packageName: string,
-  durationMinutes?: number,
+  durationMinutes = 0,
 ): Promise<void> {
   if (AppBlockingModule?.blockApp) {
     await AppBlockingModule.blockApp(packageName, durationMinutes);
@@ -85,4 +86,16 @@ export async function unblockApp(packageName: string): Promise<void> {
   if (AppBlockingModule?.unblockApp) {
     await AppBlockingModule.unblockApp(packageName);
   }
+}
+
+/**
+ * Checks whether native layer considers an app currently blocked.
+ * Placeholder behavior: returns false when native module is unavailable.
+ */
+export async function isAppBlocked(packageName: string): Promise<boolean> {
+  if (AppBlockingModule?.isAppBlocked) {
+    return AppBlockingModule.isAppBlocked(packageName);
+  }
+
+  return false;
 }
