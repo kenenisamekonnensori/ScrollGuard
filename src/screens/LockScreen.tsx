@@ -1,12 +1,83 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Screen } from '../components/Screen';
 import { PrimaryButton } from '../components/ui/PrimaryButton';
 import { colors, radii, spacing } from '../theme/tokens';
+import { RootStackParamList } from '../navigation/types';
+import { getRandomMotivation } from '../features/motivation/motivationEngine';
+import {
+  getActiveLockState,
+  getLockState,
+  isAppBlocked,
+} from '../features/blocking/blockingController';
 
-export function LockScreen(): React.JSX.Element {
-  const navigation = useNavigation<any>();
+type Props = NativeStackScreenProps<RootStackParamList, 'LockScreen'>;
+
+const APP_NAME_MAP: Record<string, string> = {
+  'com.zhiliaoapp.musically': 'TikTok',
+  'com.instagram.android': 'Instagram',
+  'com.google.android.youtube': 'YouTube',
+};
+
+function formatRemainingTime(remainingMs: number): string {
+  const totalSeconds = Math.max(0, Math.floor(remainingMs / 1000));
+  const minutes = Math.floor(totalSeconds / 60)
+    .toString()
+    .padStart(2, '0');
+  const seconds = (totalSeconds % 60).toString().padStart(2, '0');
+  return `${minutes}:${seconds}`;
+}
+
+export function LockScreen({ navigation, route }: Props): React.JSX.Element {
+  const routeApp = route.params?.app;
+  const routeLockedUntil = route.params?.lockedUntil;
+
+  const persistedLock = routeApp ? getLockState(routeApp) : getActiveLockState();
+  const [now, setNow] = React.useState(Date.now());
+  const [message] = React.useState(getRandomMotivation());
+
+  const activeApp = routeApp ?? persistedLock?.app;
+  const lockedUntil = routeLockedUntil ?? persistedLock?.lockedUntil;
+  const hasLockContext = Boolean(activeApp && lockedUntil);
+
+  const displayAppName = activeApp ? APP_NAME_MAP[activeApp] ?? activeApp : 'No app';
+  const remainingMs = lockedUntil ? Math.max(0, lockedUntil - now) : 0;
+  const isStillBlocked = activeApp ? isAppBlocked(activeApp) || remainingMs > 0 : false;
+
+  React.useEffect(() => {
+    if (!hasLockContext) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [hasLockContext]);
+
+  if (!hasLockContext) {
+    return (
+      <Screen style={styles.safeArea}>
+        <View style={styles.container}>
+          <View style={styles.visualWrap}>
+            <Text style={styles.visualIcon}>✅</Text>
+          </View>
+
+          <View style={styles.lockCard}>
+            <Text style={styles.title}>No Active Lock</Text>
+            <Text style={styles.appName}>You currently do not have a blocked app.</Text>
+            <Text style={styles.info}>
+              Open this screen from an active lock event to see live countdown details.
+            </Text>
+          </View>
+
+          <PrimaryButton label="Return to Dashboard" onPress={() => navigation.navigate('MainTabs')} />
+        </View>
+      </Screen>
+    );
+  }
 
   return (
     <Screen style={styles.safeArea}>
@@ -17,14 +88,22 @@ export function LockScreen(): React.JSX.Element {
 
         <View style={styles.lockCard}>
           <Text style={styles.title}>Time Limit Reached</Text>
-          <Text style={styles.appName}>TikTok is temporarily blocked to protect your focus.</Text>
-          <Text style={styles.timer}>24m 18s remaining</Text>
-          <Text style={styles.message}>“Your future is not in the feed.”</Text>
-          <Text style={styles.info}>Need flexibility today? Extend limit through Premium options.</Text>
+          <Text style={styles.appName}>{displayAppName} is temporarily blocked to protect your focus.</Text>
+          <Text style={styles.timer}>{formatRemainingTime(remainingMs)} remaining</Text>
+          <Text style={styles.message}>“{message}”</Text>
+          <Text style={styles.info}>
+            {isStillBlocked
+              ? 'Stay intentional. Access returns automatically when the timer finishes.'
+              : 'Lock expired. You can return to your dashboard now.'}
+          </Text>
         </View>
 
         <PrimaryButton label="Return to Dashboard" onPress={() => navigation.navigate('MainTabs')} />
-        <PrimaryButton label="Unlock with Premium" variant="secondary" onPress={() => navigation.navigate('PremiumScreen')} />
+        <PrimaryButton
+          label="Unlock with Premium"
+          variant="secondary"
+          onPress={() => navigation.navigate('PremiumScreen')}
+        />
         <Text style={styles.premiumTag}>Extend limit • PREMIUM</Text>
       </View>
     </Screen>
