@@ -6,112 +6,110 @@ import { SectionCard } from '../components/ui/SectionCard';
 import { useUsageStore } from '../store/usageStore';
 import { colors } from '../theme/tokens';
 
+const MONITORED_APPS = [
+  { packageName: 'com.zhiliaoapp.musically', appName: 'TikTok' },
+  { packageName: 'com.instagram.android', appName: 'Instagram' },
+  { packageName: 'com.google.android.youtube', appName: 'YouTube' },
+];
+
+function toMinutes(seconds: number): number {
+  return Math.floor(seconds / 60);
+}
+
+function formatMinutes(minutes: number): string {
+  if (minutes >= 60) {
+    const hours = Math.floor(minutes / 60);
+    const remainder = minutes % 60;
+    return `${hours}h ${remainder.toString().padStart(2, '0')}m`;
+  }
+
+  return `${minutes}m`;
+}
+
 export function StatsScreen(): React.JSX.Element {
   const usageStats = useUsageStore(state => state.usageStats);
-  const totalTimeMinutes = Math.floor(Object.values(usageStats).reduce((total, value) => total + value, 0) / 60);
+  const videoCounts = useUsageStore(state => state.videoCounts);
+
+  const dailyMinutes = Object.values(usageStats).reduce((total, value) => total + toMinutes(value), 0);
+  const totalVideos = Object.values(videoCounts).reduce((total, value) => total + value, 0);
+  const weeklyMinutesEstimate = dailyMinutes * 7;
+  const weeklyVideosEstimate = totalVideos * 7;
+
+  const appRows = MONITORED_APPS.map(app => {
+    const minutes = toMinutes(usageStats[app.packageName] ?? 0);
+    const videos = videoCounts[app.packageName] ?? 0;
+    return {
+      ...app,
+      minutes,
+      videos,
+    };
+  });
+
+  const maxMinutes = Math.max(...appRows.map(row => row.minutes), 1);
 
   return (
     <AppScreen
       title="Usage Analytics"
-      subtitle="Track patterns, streaks, and the moments that trigger long scrolling sessions.">
-      <View style={styles.streakBanner}>
-        <Text style={styles.streakTitle}>🔥 5 Day Healthy Streak!</Text>
-        <Text style={styles.streakSub}>You're maintaining great digital habits.</Text>
-      </View>
+      subtitle="Daily and weekly summaries of your short-video behavior.">
+      <SectionCard title="Daily usage">
+        <MetricRow label="Time spent today" value={formatMinutes(dailyMinutes)} />
+        <MetricRow label="Videos watched" value={`${totalVideos}`} />
 
-      <View style={styles.metricCards}>
-        <View style={styles.metricCard}>
-          <Text style={styles.metricCardLabel}>Avg. Daily Videos</Text>
-          <Text style={styles.metricCardValue}>12</Text>
-          <Text style={styles.metricCardTrend}>↓ 15% from last week</Text>
-        </View>
-        <View style={styles.metricCard}>
-          <Text style={styles.metricCardLabel}>Time Saved This Week</Text>
-          <Text style={styles.metricCardValue}>4h 20m</Text>
-          <Text style={[styles.metricCardTrend, styles.metricGood]}>↑ 12% from last week</Text>
-        </View>
-      </View>
-
-      <SectionCard title="Today vs Goal">
-        <MetricRow label="Today" value={`${totalTimeMinutes} min`} />
-        <MetricRow label="Goal" value="40 min" muted />
-        <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, { width: `${Math.min((totalTimeMinutes / 40) * 100, 100)}%` }]} />
-        </View>
-      </SectionCard>
-
-      <SectionCard title="Weekly Snapshot">
-        <MetricRow label="Total shorts" value="390" />
-        <MetricRow label="Total time" value="4h 12m" />
-        <MetricRow label="Best day" value="Wednesday" />
-        <View style={styles.weekBars}>
-          {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((label, index) => (
-            <View key={label + index} style={styles.barWrap}>
-              <View style={[styles.bar, { height: [80, 36, 48, 70, 24, 76, 42][index] }]} />
-              <Text style={styles.barLabel}>{label}</Text>
+        {appRows.map(row => (
+          <View key={row.packageName} style={styles.appUsageRow}>
+            <View style={styles.appUsageHeader}>
+              <Text style={styles.appName}>{row.appName}</Text>
+              <Text style={styles.appValue}>Time: {formatMinutes(row.minutes)} • Videos: {row.videos}</Text>
             </View>
-          ))}
-        </View>
+            <View style={styles.progressTrack}>
+              <View
+                style={[
+                  styles.progressFill,
+                  {
+                    width: `${Math.max((row.minutes / maxMinutes) * 100, row.minutes > 0 ? 8 : 0)}%`,
+                  },
+                ]}
+              />
+            </View>
+          </View>
+        ))}
       </SectionCard>
 
-      <SectionCard title="Behavior Insights">
-        <Text style={styles.bullet}>• Peak scrolling starts near 9:30 PM</Text>
-        <Text style={styles.bullet}>• TikTok contributes around 68% of usage</Text>
-        <Text style={styles.bullet}>• Hard limits reduce weekend spikes</Text>
+      <SectionCard title="Weekly usage">
+        <MetricRow label="Estimated weekly time" value={formatMinutes(weeklyMinutesEstimate)} />
+        <MetricRow label="Estimated weekly videos" value={`${weeklyVideosEstimate}`} />
+        <Text style={styles.helperText}>Weekly values are estimated from current daily totals.</Text>
+      </SectionCard>
+
+      <SectionCard title="Videos watched">
+        {appRows.map(row => (
+          <MetricRow key={`videos-${row.packageName}`} label={row.appName} value={`${row.videos}`} />
+        ))}
+        <MetricRow label="Total videos today" value={`${totalVideos}`} />
       </SectionCard>
     </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  streakBanner: {
-    borderWidth: 1,
-    borderColor: '#B7EAF5',
-    backgroundColor: '#EAF8FC',
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    gap: 2,
+  appUsageRow: {
+    gap: 6,
   },
-  streakTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: colors.primaryDark,
-  },
-  streakSub: {
-    fontSize: 13,
-    color: colors.textMuted,
-  },
-  metricCards: {
+  appUsageHeader: {
     flexDirection: 'row',
-    gap: 10,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
   },
-  metricCard: {
-    flex: 1,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#E7EFF4',
-    backgroundColor: colors.surface,
-    padding: 12,
-    gap: 4,
-  },
-  metricCardLabel: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  metricCardValue: {
+  appName: {
     color: colors.text,
-    fontSize: 24,
-    fontWeight: '800',
-  },
-  metricCardTrend: {
-    color: '#DC2626',
-    fontSize: 11,
+    fontSize: 14,
     fontWeight: '700',
   },
-  metricGood: {
-    color: '#059669',
+  appValue: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
   },
   progressTrack: {
     height: 10,
@@ -124,32 +122,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderRadius: 999,
   },
-  bullet: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: colors.text,
-  },
-  weekBars: {
-    flexDirection: 'row',
-    height: 104,
-    marginTop: 8,
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-  },
-  barWrap: {
-    alignItems: 'center',
-    gap: 4,
-    flex: 1,
-  },
-  bar: {
-    width: 10,
-    borderTopLeftRadius: 7,
-    borderTopRightRadius: 7,
-    backgroundColor: '#71DDF0',
-  },
-  barLabel: {
-    color: '#64748B',
-    fontSize: 10,
-    fontWeight: '700',
+  helperText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
   },
 });
