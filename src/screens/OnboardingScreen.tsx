@@ -20,6 +20,10 @@ async function openAndroidSettings(action: string): Promise<void> {
   await Linking.openSettings();
 }
 
+async function openAppSettings(): Promise<void> {
+  await Linking.openSettings();
+}
+
 export function OnboardingScreen(): React.JSX.Element {
   const navigation = useNavigation<any>();
 
@@ -46,28 +50,45 @@ export function OnboardingScreen(): React.JSX.Element {
         <Text style={styles.bullet}>• Warning and lock thresholds</Text>
       </SectionCard>
 
-      <SectionCard title="Required permissions">
-        <Text style={styles.body}>ScrollGuard needs these Android permissions to work correctly:</Text>
-        <Text style={styles.bullet}>• Usage Access — read app usage duration</Text>
-        <Text style={styles.bullet}>• Accessibility Service — detect scroll/foreground app</Text>
-        <Text style={styles.bullet}>• Notifications — send warnings and limit alerts</Text>
+      {Platform.OS === 'android' ? (
+        <SectionCard title="Required permissions">
+          <Text style={styles.body}>ScrollGuard needs these Android permissions to work correctly:</Text>
+          <Text style={styles.bullet}>• Usage Access — read app usage duration</Text>
+          <Text style={styles.bullet}>• Accessibility Service — detect scroll/foreground app</Text>
+          <Text style={styles.bullet}>• Notifications — send warnings and limit alerts</Text>
+          <Text style={styles.note}>
+            For notifications, open app settings and enable Notifications for ScrollGuard.
+          </Text>
 
-        <PrimaryButton
-          label="Open Usage Access Settings"
-          variant="secondary"
-          onPress={() => void openAndroidSettings('android.settings.USAGE_ACCESS_SETTINGS')}
-        />
-        <PrimaryButton
-          label="Open Accessibility Settings"
-          variant="secondary"
-          onPress={() => void openAndroidSettings('android.settings.ACCESSIBILITY_SETTINGS')}
-        />
-        <PrimaryButton
-          label="Open Notification Settings"
-          variant="secondary"
-          onPress={() => void openAndroidSettings('android.settings.APP_NOTIFICATION_SETTINGS')}
-        />
-      </SectionCard>
+          <PrimaryButton
+            label="Open Usage Access Settings"
+            variant="secondary"
+            onPress={() => void openAndroidSettings('android.settings.USAGE_ACCESS_SETTINGS')}
+          />
+          <PrimaryButton
+            label="Open Accessibility Settings"
+            variant="secondary"
+            onPress={() => void openAndroidSettings('android.settings.ACCESSIBILITY_SETTINGS')}
+          />
+          <PrimaryButton
+            label="Open App Settings (Notifications)"
+            variant="secondary"
+            onPress={() => void openAppSettings()}
+          />
+        </SectionCard>
+      ) : (
+        <SectionCard title="Required permissions">
+          <Text style={styles.body}>To use ScrollGuard on iOS, allow notifications in app settings.</Text>
+          <Text style={styles.note}>
+            iOS limits system-level usage tracking and app-blocking compared to Android.
+          </Text>
+          <PrimaryButton
+            label="Open App Settings"
+            variant="secondary"
+            onPress={() => void openAppSettings()}
+          />
+        </SectionCard>
+      )}
 
       <View style={styles.stepRow}>
         <View style={[styles.stepDot, styles.stepActive]} />
@@ -94,6 +115,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
     color: colors.text,
+  },
+  note: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.textMuted,
   },
   heroPanel: {
     position: 'relative',
