@@ -22,6 +22,8 @@ type VideoCounts = Record<string, number>;
 interface UsageState {
   usageStats: UsageStats;
   videoCounts: VideoCounts;
+  setUsageStats: (usageStats: UsageStats) => void;
+  setVideoCounts: (videoCounts: VideoCounts) => void;
   updateUsage: (app: string, timeSpentSeconds: number) => void;
   incrementVideoCount: (app: string) => void;
 }
@@ -47,6 +49,22 @@ function getInitialVideoCounts(): VideoCounts {
 export const useUsageStore = create<UsageState>(set => ({
   usageStats: getInitialUsageStats(),
   videoCounts: getInitialVideoCounts(),
+
+  /**
+   * Replaces all usage stats in one operation and persists once.
+   */
+  setUsageStats: usageStats => {
+    setValue(USAGE_STATS_STORAGE_KEY, usageStats);
+    set({ usageStats });
+  },
+
+  /**
+   * Replaces all video counts in one operation and persists once.
+   */
+  setVideoCounts: videoCounts => {
+    setValue(VIDEO_COUNTS_STORAGE_KEY, videoCounts);
+    set({ videoCounts });
+  },
 
   /**
    * Sets/updates the usage time (seconds) for a specific app and persists it.

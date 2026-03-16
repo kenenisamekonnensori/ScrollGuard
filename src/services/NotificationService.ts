@@ -13,7 +13,9 @@ type NotificationPayload = {
  * This will be replaced with native notifications wiring in later phases.
  */
 function scheduleNotification(payload: NotificationPayload): void {
-  console.info('[NotificationService]', payload.title, payload.body);
+  if (__DEV__) {
+    console.info('[NotificationService]', payload.title, payload.body);
+  }
 }
 
 /**

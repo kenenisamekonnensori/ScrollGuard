@@ -1,4 +1,4 @@
-import { blockApp } from '../../native/NativeBridgeService';
+import { blockApp } from '../blocking/blockingController';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useUsageStore } from '../../store/usageStore';
 import { sendLimitReachedNotification } from '../../services/NotificationService';

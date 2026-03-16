@@ -29,11 +29,21 @@ function writeLockStates(lockStates: LockStateMap): void {
  */
 function cleanupExpiredLocks(lockStates: LockStateMap): LockStateMap {
   const now = Date.now();
+  let didRemoveExpiredLock = false;
   const cleaned = Object.fromEntries(
-    Object.entries(lockStates).filter(([, lockedUntil]) => lockedUntil > now),
+    Object.entries(lockStates).filter(([, lockedUntil]) => {
+      const isActive = lockedUntil > now;
+      if (!isActive) {
+        didRemoveExpiredLock = true;
+      }
+      return isActive;
+    }),
   );
 
-  writeLockStates(cleaned);
+  if (didRemoveExpiredLock) {
+    writeLockStates(cleaned);
+  }
+
   return cleaned;
 }
 

@@ -7,14 +7,15 @@ import { useUsageStore } from '../store/usageStore';
  */
 export async function fetchTodayUsage(): Promise<Record<string, number>> {
   const usageStats = await getUsageStats();
-  const updateUsage = useUsageStore.getState().updateUsage;
+  const setUsageStats = useUsageStore.getState().setUsageStats;
   const normalizedUsage: Record<string, number> = {};
 
   Object.entries(usageStats).forEach(([packageName, value]) => {
     const safeSeconds = Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
     normalizedUsage[packageName] = safeSeconds;
-    updateUsage(packageName, safeSeconds);
   });
+
+  setUsageStats(normalizedUsage);
 
   return normalizedUsage;
 }

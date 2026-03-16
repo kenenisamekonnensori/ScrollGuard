@@ -34,23 +34,50 @@ export function LockScreen({ navigation, route }: Props): React.JSX.Element {
   const routeLockedUntil = route.params?.lockedUntil;
 
   const persistedLock = routeApp ? getLockState(routeApp) : getActiveLockState();
-  const fallbackLockedUntil = Date.now() + 25 * 60 * 1000;
   const [now, setNow] = React.useState(Date.now());
   const [message] = React.useState(getRandomMotivation());
 
-  const activeApp = routeApp ?? persistedLock?.app ?? 'com.zhiliaoapp.musically';
-  const displayAppName = APP_NAME_MAP[activeApp] ?? activeApp;
-  const lockedUntil = routeLockedUntil ?? persistedLock?.lockedUntil ?? fallbackLockedUntil;
-  const remainingMs = Math.max(0, lockedUntil - now);
-  const isStillBlocked = isAppBlocked(activeApp) || remainingMs > 0;
+  const activeApp = routeApp ?? persistedLock?.app;
+  const lockedUntil = routeLockedUntil ?? persistedLock?.lockedUntil;
+  const hasLockContext = Boolean(activeApp && lockedUntil);
+
+  const displayAppName = activeApp ? APP_NAME_MAP[activeApp] ?? activeApp : 'No app';
+  const remainingMs = lockedUntil ? Math.max(0, lockedUntil - now) : 0;
+  const isStillBlocked = activeApp ? isAppBlocked(activeApp) || remainingMs > 0 : false;
 
   React.useEffect(() => {
+    if (!hasLockContext) {
+      return;
+    }
+
     const interval = setInterval(() => {
       setNow(Date.now());
     }, 1000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [hasLockContext]);
+
+  if (!hasLockContext) {
+    return (
+      <Screen style={styles.safeArea}>
+        <View style={styles.container}>
+          <View style={styles.visualWrap}>
+            <Text style={styles.visualIcon}>✅</Text>
+          </View>
+
+          <View style={styles.lockCard}>
+            <Text style={styles.title}>No Active Lock</Text>
+            <Text style={styles.appName}>You currently do not have a blocked app.</Text>
+            <Text style={styles.info}>
+              Open this screen from an active lock event to see live countdown details.
+            </Text>
+          </View>
+
+          <PrimaryButton label="Return to Dashboard" onPress={() => navigation.navigate('MainTabs')} />
+        </View>
+      </Screen>
+    );
+  }
 
   return (
     <Screen style={styles.safeArea}>

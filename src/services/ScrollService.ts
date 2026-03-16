@@ -19,6 +19,28 @@ type ScrollEventPayload = {
  */
 class ScrollService {
   private subscription: EmitterSubscription | null = null;
+  private flushInterval: ReturnType<typeof setInterval> | null = null;
+  private pendingIncrements: Record<string, number> = {};
+
+  /**
+   * Flushes buffered scroll increments to the usage store in one persisted write.
+   */
+  private flushPendingIncrements(): void {
+    const pendingEntries = Object.entries(this.pendingIncrements);
+    if (pendingEntries.length === 0) {
+      return;
+    }
+
+    const { videoCounts, setVideoCounts } = useUsageStore.getState();
+    const nextVideoCounts = { ...videoCounts };
+
+    pendingEntries.forEach(([packageName, count]) => {
+      nextVideoCounts[packageName] = (nextVideoCounts[packageName] ?? 0) + count;
+    });
+
+    this.pendingIncrements = {};
+    setVideoCounts(nextVideoCounts);
+  }
 
   /**
    * Starts native scroll detection and subscribes to onScrollDetected events.
@@ -44,9 +66,14 @@ class ScrollService {
           return;
         }
 
-        useUsageStore.getState().incrementVideoCount(packageName);
+        this.pendingIncrements[packageName] =
+          (this.pendingIncrements[packageName] ?? 0) + 1;
       },
     );
+
+    this.flushInterval = setInterval(() => {
+      this.flushPendingIncrements();
+    }, 1000);
   }
 
   /**
@@ -56,6 +83,13 @@ class ScrollService {
     stopScrollDetection();
     this.subscription?.remove();
     this.subscription = null;
+
+    if (this.flushInterval) {
+      clearInterval(this.flushInterval);
+      this.flushInterval = null;
+    }
+
+    this.flushPendingIncrements();
   }
 }
 
