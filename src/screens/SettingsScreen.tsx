@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { AppScreen } from '../components/ui/AppScreen';
 import { MetricRow } from '../components/ui/MetricRow';
@@ -8,9 +8,63 @@ import { SectionCard } from '../components/ui/SectionCard';
 import { useSettingsStore } from '../store/settingsStore';
 import { colors } from '../theme/tokens';
 
+type SettingLimitKey =
+  | 'tiktokLimitMinutes'
+  | 'instagramLimitMinutes'
+  | 'youtubeLimitMinutes'
+  | 'lockDurationMinutes';
+
+type LimitControlProps = {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  onDecrease: () => void;
+  onIncrease: () => void;
+};
+
+function LimitControl({
+  label,
+  value,
+  min,
+  max,
+  onDecrease,
+  onIncrease,
+}: LimitControlProps): React.JSX.Element {
+  const disableDecrease = value <= min;
+  const disableIncrease = value >= max;
+
+  return (
+    <View style={styles.limitRow}>
+      <Text style={styles.limitLabel}>{label}</Text>
+      <View style={styles.stepperWrap}>
+        <Pressable
+          disabled={disableDecrease}
+          onPress={onDecrease}
+          style={[styles.stepperButton, disableDecrease ? styles.stepperButtonDisabled : null]}>
+          <Text style={styles.stepperSymbol}>−</Text>
+        </Pressable>
+        <Text style={styles.stepperValue}>{value} min</Text>
+        <Pressable
+          disabled={disableIncrease}
+          onPress={onIncrease}
+          style={[styles.stepperButton, disableIncrease ? styles.stepperButtonDisabled : null]}>
+          <Text style={styles.stepperSymbol}>＋</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 export function SettingsScreen(): React.JSX.Element {
   const navigation = useNavigation<any>();
   const userSettings = useSettingsStore(state => state.userSettings);
+  const updateLimit = useSettingsStore(state => state.updateLimit);
+
+  const adjustLimit = (key: SettingLimitKey, delta: number, min: number, max: number): void => {
+    const nextValue = Math.max(min, Math.min(max, userSettings[key] + delta));
+    updateLimit(key, nextValue);
+  };
 
   return (
     <AppScreen
@@ -18,14 +72,42 @@ export function SettingsScreen(): React.JSX.Element {
       subtitle="Customize limits, lock behavior, alerts, and account controls.">
       <Text style={styles.sectionLabel}>Usage Limits</Text>
       <SectionCard title="Daily Limits">
-        <MetricRow label="TikTok" value={`${userSettings.tiktokLimitMinutes} min`} />
-        <MetricRow label="Instagram" value={`${userSettings.instagramLimitMinutes} min`} />
-        <MetricRow label="YouTube" value={`${userSettings.youtubeLimitMinutes} min`} />
+        <LimitControl
+          label="TikTok limit"
+          value={userSettings.tiktokLimitMinutes}
+          min={5}
+          max={180}
+          onDecrease={() => adjustLimit('tiktokLimitMinutes', -5, 5, 180)}
+          onIncrease={() => adjustLimit('tiktokLimitMinutes', 5, 5, 180)}
+        />
+        <LimitControl
+          label="Instagram limit"
+          value={userSettings.instagramLimitMinutes}
+          min={5}
+          max={180}
+          onDecrease={() => adjustLimit('instagramLimitMinutes', -5, 5, 180)}
+          onIncrease={() => adjustLimit('instagramLimitMinutes', 5, 5, 180)}
+        />
+        <LimitControl
+          label="YouTube limit"
+          value={userSettings.youtubeLimitMinutes}
+          min={5}
+          max={180}
+          onDecrease={() => adjustLimit('youtubeLimitMinutes', -5, 5, 180)}
+          onIncrease={() => adjustLimit('youtubeLimitMinutes', 5, 5, 180)}
+        />
       </SectionCard>
 
       <Text style={styles.sectionLabel}>Focus Mode</Text>
       <SectionCard title="Protection Rules">
-        <MetricRow label="Lock duration" value={`${userSettings.lockDurationMinutes} min`} />
+        <LimitControl
+          label="Lock duration"
+          value={userSettings.lockDurationMinutes}
+          min={5}
+          max={120}
+          onDecrease={() => adjustLimit('lockDurationMinutes', -5, 5, 120)}
+          onIncrease={() => adjustLimit('lockDurationMinutes', 5, 5, 120)}
+        />
         <MetricRow label="Warnings" value="50%, 75%, 100%" />
         <Text style={styles.note}>When a limit is exceeded, lock overlay blocks the selected app until timer ends.</Text>
       </SectionCard>
@@ -63,5 +145,48 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 2,
     marginBottom: 10,
+  },
+  limitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  limitLabel: {
+    fontSize: 14,
+    color: colors.text,
+    fontWeight: '600',
+    flex: 1,
+  },
+  stepperWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  stepperButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepperButtonDisabled: {
+    opacity: 0.45,
+  },
+  stepperSymbol: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '700',
+    lineHeight: 20,
+  },
+  stepperValue: {
+    minWidth: 64,
+    textAlign: 'center',
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
   },
 });
