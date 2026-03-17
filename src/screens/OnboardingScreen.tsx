@@ -1,47 +1,11 @@
 import React from 'react';
-import { Linking, Platform, StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import { AppScreen } from '../components/ui/AppScreen';
 import { PrimaryButton } from '../components/ui/PrimaryButton';
 import { SectionCard } from '../components/ui/SectionCard';
 import { colors, typography } from '../theme/tokens';
 import { useNavigation } from '@react-navigation/native';
-
-async function openAndroidSettings(action: string): Promise<void> {
-  if (Platform.OS === 'android' && typeof Linking.sendIntent === 'function') {
-    try {
-      await Linking.sendIntent(action);
-      return;
-    } catch {
-      try {
-        await Linking.openSettings();
-        return;
-      } catch {
-        if (__DEV__) {
-          console.warn('[OnboardingScreen] Failed to open Android intent and app settings fallback.');
-        }
-        return;
-      }
-    }
-  }
-
-  try {
-    await Linking.openSettings();
-  } catch {
-    if (__DEV__) {
-      console.warn('[OnboardingScreen] Failed to open app settings for current platform.');
-    }
-  }
-}
-
-async function openAppSettings(): Promise<void> {
-  try {
-    await Linking.openSettings();
-  } catch {
-    if (__DEV__) {
-      console.warn('[OnboardingScreen] Failed to open app settings.');
-    }
-  }
-}
+import { openAndroidSettings, openAppSettings } from '../utils/settingsLinks';
 
 export function OnboardingScreen(): React.JSX.Element {
   const navigation = useNavigation<any>();
@@ -82,17 +46,17 @@ export function OnboardingScreen(): React.JSX.Element {
           <PrimaryButton
             label="Open Usage Access Settings"
             variant="secondary"
-            onPress={() => void openAndroidSettings('android.settings.USAGE_ACCESS_SETTINGS')}
+            onPress={() => void openAndroidSettings('android.settings.USAGE_ACCESS_SETTINGS', 'OnboardingScreen')}
           />
           <PrimaryButton
             label="Open Accessibility Settings"
             variant="secondary"
-            onPress={() => void openAndroidSettings('android.settings.ACCESSIBILITY_SETTINGS')}
+            onPress={() => void openAndroidSettings('android.settings.ACCESSIBILITY_SETTINGS', 'OnboardingScreen')}
           />
           <PrimaryButton
             label="Open App Settings (Notifications)"
             variant="secondary"
-            onPress={() => void openAppSettings()}
+            onPress={() => void openAppSettings('OnboardingScreen')}
           />
         </SectionCard>
       ) : (
@@ -104,7 +68,7 @@ export function OnboardingScreen(): React.JSX.Element {
           <PrimaryButton
             label="Open App Settings"
             variant="secondary"
-            onPress={() => void openAppSettings()}
+            onPress={() => void openAppSettings('OnboardingScreen')}
           />
         </SectionCard>
       )}

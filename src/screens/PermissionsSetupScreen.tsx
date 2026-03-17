@@ -1,5 +1,5 @@
 import React from 'react';
-import { Linking, Platform, StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { AppScreen } from '../components/ui/AppScreen';
 import { PrimaryButton } from '../components/ui/PrimaryButton';
@@ -11,6 +11,7 @@ import {
   hasUsageAccessPermission,
   isAccessibilityServiceEnabled,
 } from '../native/NativeBridgeService';
+import { openAndroidSettings, openAppSettings } from '../utils/settingsLinks';
 
 type PermissionStatus = {
   usageAccess: boolean;
@@ -24,43 +25,6 @@ const INITIAL_PERMISSION_STATUS: PermissionStatus = {
   notifications: false,
 };
 
-async function openAndroidSettings(action: string): Promise<void> {
-  if (Platform.OS === 'android' && typeof Linking.sendIntent === 'function') {
-    try {
-      await Linking.sendIntent(action);
-      return;
-    } catch {
-      try {
-        await Linking.openSettings();
-        return;
-      } catch {
-        if (__DEV__) {
-          console.warn('[PermissionsSetupScreen] Failed to open Android intent and app settings fallback.');
-        }
-        return;
-      }
-    }
-  }
-
-  try {
-    await Linking.openSettings();
-  } catch {
-    if (__DEV__) {
-      console.warn('[PermissionsSetupScreen] Failed to open app settings for current platform.');
-    }
-  }
-}
-
-async function openAppSettings(): Promise<void> {
-  try {
-    await Linking.openSettings();
-  } catch {
-    if (__DEV__) {
-      console.warn('[PermissionsSetupScreen] Failed to open app settings.');
-    }
-  }
-}
-
 export function PermissionsSetupScreen(): React.JSX.Element {
   const navigation = useNavigation<any>();
   const isAndroid = Platform.OS === 'android';
@@ -72,7 +36,8 @@ export function PermissionsSetupScreen(): React.JSX.Element {
 
     try {
       const permissionResults = await Promise.allSettled([
-        hasUsageAccessPermission(),
+        // Uses cached fallback to keep status accurate while avoiding repeated heavy calls.
+        hasUsageAccessPermission({ allowExpensiveFallback: true }),
         isAccessibilityServiceEnabled(),
         areNotificationsEnabled(),
       ]);
@@ -135,8 +100,9 @@ export function PermissionsSetupScreen(): React.JSX.Element {
     + (isAndroid && usageAccessSupported && permissionStatus.usageAccess ? 1 : 0)
     + (isAndroid && accessibilitySupported && permissionStatus.accessibility ? 1 : 0);
 
-  const safeTotalRequiredPermissions = Math.max(totalRequiredPermissions, 1);
-  const completionPercent = Math.round((completedPermissionsCount / safeTotalRequiredPermissions) * 100);
+  const completionPercent = totalRequiredPermissions > 0
+    ? Math.round((completedPermissionsCount / totalRequiredPermissions) * 100)
+    : 100;
 
   const firstMissingPermissionAction = async (): Promise<void> => {
     // Refresh first to avoid opening the wrong settings page due to stale state.
@@ -144,22 +110,22 @@ export function PermissionsSetupScreen(): React.JSX.Element {
 
     if (isAndroid) {
       if (usageAccessSupported && !latestStatus.usageAccess) {
-        await openAndroidSettings('android.settings.USAGE_ACCESS_SETTINGS');
+        await openAndroidSettings('android.settings.USAGE_ACCESS_SETTINGS', 'PermissionsSetupScreen');
         return;
       }
 
       if (accessibilitySupported && !latestStatus.accessibility) {
-        await openAndroidSettings('android.settings.ACCESSIBILITY_SETTINGS');
+        await openAndroidSettings('android.settings.ACCESSIBILITY_SETTINGS', 'PermissionsSetupScreen');
         return;
       }
     }
 
     if (notificationsSupported && !latestStatus.notifications) {
-      await openAppSettings();
+      await openAppSettings('PermissionsSetupScreen');
       return;
     }
 
-    await openAppSettings();
+    await openAppSettings('PermissionsSetupScreen');
   };
 
   return (
@@ -229,20 +195,20 @@ export function PermissionsSetupScreen(): React.JSX.Element {
           <PrimaryButton
             label="Open Usage Access Settings"
             variant="secondary"
-            onPress={() => void openAndroidSettings('android.settings.USAGE_ACCESS_SETTINGS')}
+            onPress={() => void openAndroidSettings('android.settings.USAGE_ACCESS_SETTINGS', 'PermissionsSetupScreen')}
           />
         ) : null}
         {isAndroid ? (
           <PrimaryButton
             label="Open Accessibility Settings"
             variant="secondary"
-            onPress={() => void openAndroidSettings('android.settings.ACCESSIBILITY_SETTINGS')}
+            onPress={() => void openAndroidSettings('android.settings.ACCESSIBILITY_SETTINGS', 'PermissionsSetupScreen')}
           />
         ) : null}
         <PrimaryButton
           label="Open App Settings (Notifications)"
           variant="secondary"
-          onPress={() => void openAppSettings()}
+          onPress={() => void openAppSettings('PermissionsSetupScreen')}
         />
       </SectionCard>
 
@@ -256,26 +222,30 @@ export function PermissionsSetupScreen(): React.JSX.Element {
         onPress={() => void refreshPermissionStatus()}
       />
 
-      <View style={styles.progressWrap}>
-        <View style={styles.progressHeader}>
-          <Text style={styles.progressTitle}>Setup Progress</Text>
-          <Text style={styles.progressValue}>
-            {isLoading
-              ? 'Checking...'
-              : `${completedPermissionsCount}/${safeTotalRequiredPermissions} (${completionPercent}%)`}
-          </Text>
+      {totalRequiredPermissions > 0 ? (
+        <View style={styles.progressWrap}>
+          <View style={styles.progressHeader}>
+            <Text style={styles.progressTitle}>Setup Progress</Text>
+            <Text style={styles.progressValue}>
+              {isLoading
+                ? 'Checking...'
+                : `${completedPermissionsCount}/${totalRequiredPermissions} (${completionPercent}%)`}
+            </Text>
+          </View>
+          <View style={styles.progressTrack}>
+            <View
+              style={[
+                styles.progressFill,
+                {
+                  width: `${isLoading ? 0 : completionPercent}%`,
+                },
+              ]}
+            />
+          </View>
         </View>
-        <View style={styles.progressTrack}>
-          <View
-            style={[
-              styles.progressFill,
-              {
-                width: `${isLoading ? 0 : completionPercent}%`,
-              },
-            ]}
-          />
-        </View>
-      </View>
+      ) : (
+        <Text style={styles.footer}>Permission status checks are unavailable on this build.</Text>
+      )}
 
       <PrimaryButton
         label="All Set"
