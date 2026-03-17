@@ -33,6 +33,17 @@ type AppBlockingModuleContract = {
   isAppBlocked?: (packageName: string) => Promise<boolean>;
 };
 
+type IOSNotificationPermissions = {
+  alert?: boolean;
+  badge?: boolean;
+  sound?: boolean;
+  authorizationStatus?: number;
+};
+
+type PushNotificationManagerIOSContract = {
+  checkPermissions?: (callback: (permissions: IOSNotificationPermissions) => void) => void;
+};
+
 const { AppUsageModule, ScrollDetectionModule, AppBlockingModule } =
   NativeModules as {
     AppUsageModule?: AppUsageModuleContract;
@@ -40,14 +51,8 @@ const { AppUsageModule, ScrollDetectionModule, AppBlockingModule } =
     AppBlockingModule?: AppBlockingModuleContract;
   };
 
-/**
- * Indicates whether each permission status can be checked on the current binary/runtime.
- */
-export const permissionStatusSupport = {
-  usageAccess: Boolean(AppUsageModule?.hasUsageAccessPermission || AppUsageModule?.getUsageStats),
-  accessibility: Boolean(ScrollDetectionModule?.isAccessibilityServiceEnabled),
-  notifications: Boolean(AppUsageModule?.areNotificationsEnabled) || Platform.OS === 'android',
-};
+let usageAccessFallbackCache: { value: boolean; atMs: number } | null = null;
+const USAGE_ACCESS_FALLBACK_CACHE_MS = 30_000;
 
 /**
  * Returns permission-status capability checks at call-time.
@@ -60,11 +65,21 @@ export function getPermissionStatusSupport(): {
 } {
   const appUsageModule = NativeModules.AppUsageModule as AppUsageModuleContract | undefined;
   const scrollDetectionModule = NativeModules.ScrollDetectionModule as ScrollDetectionModuleContract | undefined;
+  const pushNotificationManager =
+    NativeModules.PushNotificationManager as PushNotificationManagerIOSContract | undefined;
+
+  const androidNotificationSupport =
+    Boolean(appUsageModule?.areNotificationsEnabled)
+    || (Platform.OS === 'android'
+      && typeof Platform.Version === 'number'
+      && Platform.Version >= 33);
+  const iosNotificationSupport =
+    Platform.OS === 'ios' && Boolean(pushNotificationManager?.checkPermissions);
 
   return {
     usageAccess: Boolean(appUsageModule?.hasUsageAccessPermission || appUsageModule?.getUsageStats),
     accessibility: Boolean(scrollDetectionModule?.isAccessibilityServiceEnabled),
-    notifications: Boolean(appUsageModule?.areNotificationsEnabled) || Platform.OS === 'android',
+    notifications: androidNotificationSupport || iosNotificationSupport,
   };
 }
 
@@ -84,18 +99,27 @@ export async function getUsageStats(): Promise<UsageStatsResponse> {
  * Checks whether Android Usage Access permission is granted.
  * Returns false if native status API is unavailable.
  */
-export async function hasUsageAccessPermission(): Promise<boolean> {
+export async function hasUsageAccessPermission(options?: { allowExpensiveFallback?: boolean }): Promise<boolean> {
+  const allowExpensiveFallback = options?.allowExpensiveFallback ?? true;
+
   if (AppUsageModule?.hasUsageAccessPermission) {
     return AppUsageModule.hasUsageAccessPermission();
   }
 
   // Fallback path for older native binaries where explicit permission-status API is not exposed yet.
   // If usage stats call succeeds, usage access is effectively granted.
-  if (AppUsageModule?.getUsageStats) {
+  if (allowExpensiveFallback && AppUsageModule?.getUsageStats) {
+    const now = Date.now();
+    if (usageAccessFallbackCache && now - usageAccessFallbackCache.atMs < USAGE_ACCESS_FALLBACK_CACHE_MS) {
+      return usageAccessFallbackCache.value;
+    }
+
     try {
       await AppUsageModule.getUsageStats();
+      usageAccessFallbackCache = { value: true, atMs: now };
       return true;
     } catch {
+      usageAccessFallbackCache = { value: false, atMs: now };
       return false;
     }
   }
@@ -123,8 +147,27 @@ export async function areNotificationsEnabled(): Promise<boolean> {
       }
     }
 
-    // Android < 13 has no runtime notifications permission; treat as enabled in fallback mode.
-    return true;
+    // Android < 13 without native status API is treated as unsupported by getPermissionStatusSupport().
+    return false;
+  }
+
+  if (Platform.OS === 'ios') {
+    const pushNotificationManager =
+      NativeModules.PushNotificationManager as PushNotificationManagerIOSContract | undefined;
+
+    if (pushNotificationManager?.checkPermissions) {
+      return new Promise(resolve => {
+        pushNotificationManager.checkPermissions?.(permissions => {
+          const enabled = Boolean(
+            permissions.alert
+              || permissions.badge
+              || permissions.sound
+              || (typeof permissions.authorizationStatus === 'number' && permissions.authorizationStatus > 0),
+          );
+          resolve(enabled);
+        });
+      });
+    }
   }
 
   return false;
