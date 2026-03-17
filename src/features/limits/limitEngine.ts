@@ -2,6 +2,7 @@ import { blockApp } from '../blocking/blockingController';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useUsageStore } from '../../store/usageStore';
 import { sendLimitReachedNotification } from '../../services/NotificationService';
+import { MONITORED_PACKAGES, PACKAGE_LABELS } from '../../utils/appPackages';
 
 type MonitoredAppConfig = {
   packageName: string;
@@ -14,18 +15,18 @@ type MonitoredAppConfig = {
 
 const MONITORED_APPS: MonitoredAppConfig[] = [
   {
-    packageName: 'com.zhiliaoapp.musically',
-    appName: 'TikTok',
+    packageName: MONITORED_PACKAGES.tiktok,
+    appName: PACKAGE_LABELS[MONITORED_PACKAGES.tiktok],
     settingKey: 'tiktokLimitMinutes',
   },
   {
-    packageName: 'com.instagram.android',
-    appName: 'Instagram',
+    packageName: MONITORED_PACKAGES.instagram,
+    appName: PACKAGE_LABELS[MONITORED_PACKAGES.instagram],
     settingKey: 'instagramLimitMinutes',
   },
   {
-    packageName: 'com.google.android.youtube',
-    appName: 'YouTube',
+    packageName: MONITORED_PACKAGES.youtube,
+    appName: PACKAGE_LABELS[MONITORED_PACKAGES.youtube],
     settingKey: 'youtubeLimitMinutes',
   },
 ];

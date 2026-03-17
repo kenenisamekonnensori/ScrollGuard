@@ -1,8 +1,6 @@
-@file:Suppress("OVERRIDE_DEPRECATION")
-
 package com.scrollguard.nativebridge
 
-import com.facebook.react.TurboReactPackage
+import com.facebook.react.BaseReactPackage
 import com.facebook.react.bridge.NativeModule
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.module.model.ReactModuleInfo
@@ -17,8 +15,7 @@ import java.util.HashMap
     AppBlockingModule::class,
   ],
 )
-class ScrollGuardNativePackage : TurboReactPackage() {
-  @Deprecated("Override required by current React Native package API")
+class ScrollGuardNativePackage : BaseReactPackage() {
   override fun getModule(name: String, reactContext: ReactApplicationContext): NativeModule? {
     return when (name) {
       AppUsageModule.NAME -> AppUsageModule(reactContext)
@@ -28,7 +25,6 @@ class ScrollGuardNativePackage : TurboReactPackage() {
     }
   }
 
-  @Deprecated("Override required by current React Native package API")
   override fun getReactModuleInfoProvider(): ReactModuleInfoProvider {
     return ReactModuleInfoProvider {
       val moduleInfos = HashMap<String, ReactModuleInfo>()
@@ -36,7 +32,6 @@ class ScrollGuardNativePackage : TurboReactPackage() {
       moduleInfos[AppUsageModule.NAME] = ReactModuleInfo(
         AppUsageModule.NAME,
         AppUsageModule::class.java.name,
-        false,
         false,
         false,
         false,
@@ -50,13 +45,11 @@ class ScrollGuardNativePackage : TurboReactPackage() {
         false,
         false,
         false,
-        false,
       )
 
       moduleInfos[AppBlockingModule.NAME] = ReactModuleInfo(
         AppBlockingModule.NAME,
         AppBlockingModule::class.java.name,
-        false,
         false,
         false,
         false,

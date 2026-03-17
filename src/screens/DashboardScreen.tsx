@@ -6,6 +6,7 @@ import { PrimaryButton } from '../components/ui/PrimaryButton';
 import { SectionCard } from '../components/ui/SectionCard';
 import { useUsageStore } from '../store/usageStore';
 import { colors } from '../theme/tokens';
+import { refreshMonitoringNow } from '../services/MonitoringService';
 
 const MONITORED_APPS = [
   {
@@ -44,9 +45,17 @@ export function DashboardScreen(): React.JSX.Element {
   const navigation = useNavigation<any>();
   const usageStats = useUsageStore(state => state.usageStats);
   const videoCounts = useUsageStore(state => state.videoCounts);
+  const lastSyncedAt = useUsageStore(state => state.lastSyncedAt);
   const totalSeconds = Object.values(usageStats).reduce((acc, value) => acc + value, 0);
   const totalVideos = Object.values(videoCounts).reduce((acc, value) => acc + value, 0);
   const hasUsageData = totalSeconds > 0 || totalVideos > 0;
+  const lastSyncLabel = lastSyncedAt
+    ? new Date(lastSyncedAt).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })
+    : 'Not synced yet';
 
   return (
     <AppScreen
@@ -56,6 +65,7 @@ export function DashboardScreen(): React.JSX.Element {
         <Text style={styles.heroLabel}>Time spent today</Text>
         <Text style={styles.heroValue}>{Math.floor(totalSeconds / 60)} min</Text>
         <Text style={styles.heroSub}>Videos watched: {totalVideos}</Text>
+        <Text style={styles.heroSub}>Last sync: {lastSyncLabel}</Text>
       </SectionCard>
 
       <SectionCard title="App usage summary">
@@ -90,6 +100,7 @@ export function DashboardScreen(): React.JSX.Element {
       ) : null}
 
       <SectionCard title="Quick Actions">
+        <PrimaryButton label="Sync now" variant="secondary" onPress={() => void refreshMonitoringNow()} />
         <PrimaryButton label="Open Premium to unlock extra time" onPress={() => navigation.navigate('PremiumScreen')} />
         <PrimaryButton label="Preview Lock Overlay" variant="secondary" onPress={() => navigation.navigate('LockScreen')} />
         <PrimaryButton label="Open Profile" variant="ghost" onPress={() => navigation.navigate('ProfileScreen')} />

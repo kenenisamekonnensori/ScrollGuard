@@ -1,53 +1,144 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { AppScreen } from '../components/ui/AppScreen';
+import { MetricRow } from '../components/ui/MetricRow';
 import { SectionCard } from '../components/ui/SectionCard';
+import { getLockState } from '../features/blocking/blockingController';
+import { useSettingsStore } from '../store/settingsStore';
+import { useUsageStore } from '../store/usageStore';
 import { colors } from '../theme/tokens';
+import {
+  MONITORED_PACKAGE_LIST,
+  MONITORED_PACKAGES,
+  PACKAGE_LABELS,
+} from '../utils/appPackages';
+
+type AlertItem = {
+  id: string;
+  message: string;
+  severity: 'info' | 'warning' | 'danger';
+};
+
+const LIMIT_KEYS: Record<string, keyof ReturnType<typeof useSettingsStore.getState>['userSettings']> = {
+  [MONITORED_PACKAGES.tiktok]: 'tiktokLimitMinutes',
+  [MONITORED_PACKAGES.instagram]: 'instagramLimitMinutes',
+  [MONITORED_PACKAGES.youtube]: 'youtubeLimitMinutes',
+};
+
+function toMinutes(seconds: number): number {
+  return Math.floor(seconds / 60);
+}
+
+function getAlertIcon(severity: AlertItem['severity']): string {
+  if (severity === 'danger') {
+    return '🔒';
+  }
+
+  if (severity === 'warning') {
+    return '⚠️';
+  }
+
+  return 'ℹ️';
+}
 
 export function NotificationsScreen(): React.JSX.Element {
+  const usageStats = useUsageStore(state => state.usageStats);
+  const videoCounts = useUsageStore(state => state.videoCounts);
+  const lastSyncedAt = useUsageStore(state => state.lastSyncedAt);
+  const userSettings = useSettingsStore(state => state.userSettings);
+
+  const alerts: AlertItem[] = [];
+
+  MONITORED_PACKAGE_LIST.forEach(packageName => {
+    const appName = PACKAGE_LABELS[packageName] ?? packageName;
+    const usageMinutes = toMinutes(usageStats[packageName] ?? 0);
+    const limitMinutes = userSettings[LIMIT_KEYS[packageName]];
+    const usagePercent = limitMinutes > 0 ? (usageMinutes / limitMinutes) * 100 : 0;
+    const lockState = getLockState(packageName);
+
+    if (lockState) {
+      alerts.push({
+        id: `${packageName}-locked`,
+        message: `${appName} is currently blocked until ${new Date(lockState.lockedUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`,
+        severity: 'danger',
+      });
+      return;
+    }
+
+    if (usagePercent >= 100) {
+      alerts.push({
+        id: `${packageName}-limit`,
+        message: `${appName} reached its daily limit (${usageMinutes}/${limitMinutes} min).`,
+        severity: 'danger',
+      });
+      return;
+    }
+
+    if (usagePercent >= 75) {
+      alerts.push({
+        id: `${packageName}-warn75`,
+        message: `${appName} is at ${Math.floor(usagePercent)}% of daily limit (${usageMinutes}/${limitMinutes} min).`,
+        severity: 'warning',
+      });
+      return;
+    }
+
+    if (usagePercent >= 50) {
+      alerts.push({
+        id: `${packageName}-warn50`,
+        message: `${appName} crossed 50% of daily limit (${usageMinutes}/${limitMinutes} min).`,
+        severity: 'warning',
+      });
+    }
+  });
+
+  const totalVideos = Object.values(videoCounts).reduce((total, value) => total + value, 0);
+  const summaryAlert: AlertItem = {
+    id: 'videos-summary',
+    message: `Videos watched today: ${totalVideos}`,
+    severity: 'info',
+  };
+
+  const syncLabel = lastSyncedAt
+    ? new Date(lastSyncedAt).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })
+    : 'Not synced yet';
+
   return (
     <AppScreen
       title="Notifications Center"
       subtitle="Review warnings, lock events, streak wins, and motivation nudges.">
-      <View style={styles.filterRow}>
-        <Text style={[styles.filter, styles.filterActive]}>All</Text>
-        <Text style={styles.filter}>Usage</Text>
-        <Text style={styles.filter}>Goals</Text>
-        <Text style={styles.filter}>Reminders</Text>
-      </View>
-
-      <SectionCard title="Today">
-        <View style={styles.alertItem}><Text style={styles.item}>⚠️ 75% of TikTok limit reached</Text><Text style={styles.time}>10m ago</Text></View>
-        <View style={styles.alertItem}><Text style={styles.item}>🧠 Focus reminder at 9:30 PM</Text><Text style={styles.time}>1h ago</Text></View>
-        <View style={styles.alertItem}><Text style={styles.item}>✅ Session complete: 45 min without social apps</Text><Text style={styles.time}>3h ago</Text></View>
+      <SectionCard title="Live Alerts">
+        {alerts.length > 0 ? (
+          alerts.map(alert => (
+            <View key={alert.id} style={styles.alertItem}>
+              <Text style={styles.item}>{getAlertIcon(alert.severity)} {alert.message}</Text>
+              <Text style={styles.time}>Updated {syncLabel}</Text>
+            </View>
+          ))
+        ) : (
+          <View style={styles.alertItem}>
+            <Text style={styles.item}>✅ No active warnings right now.</Text>
+            <Text style={styles.time}>Updated {syncLabel}</Text>
+          </View>
+        )}
       </SectionCard>
 
-      <SectionCard title="Earlier">
-        <View style={styles.alertItem}><Text style={styles.item}>🔒 Lock activated for Instagram (20m)</Text><Text style={styles.time}>Yesterday</Text></View>
-        <View style={styles.alertItem}><Text style={styles.item}>🔥 Streak extended to 4 days</Text><Text style={styles.time}>Yesterday</Text></View>
+      <SectionCard title="Summary">
+        <MetricRow label="Last sync" value={syncLabel} />
+        <View style={styles.alertItem}>
+          <Text style={styles.item}>{getAlertIcon(summaryAlert.severity)} {summaryAlert.message}</Text>
+          <Text style={styles.time}>Updated {syncLabel}</Text>
+        </View>
       </SectionCard>
     </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  filterRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  filter: {
-    backgroundColor: '#E8EDF2',
-    color: '#64748B',
-    fontSize: 12,
-    fontWeight: '600',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  filterActive: {
-    backgroundColor: colors.primary,
-    color: colors.white,
-  },
   alertItem: {
     paddingVertical: 5,
     borderBottomWidth: 1,

@@ -1,18 +1,27 @@
-import React from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { AppScreen } from '../components/ui/AppScreen';
 import { MetricRow } from '../components/ui/MetricRow';
 import { PrimaryButton } from '../components/ui/PrimaryButton';
 import { SectionCard } from '../components/ui/SectionCard';
+import { getLockState, unblockApp } from '../features/blocking/blockingController';
+import { isAppBlocked as isAppBlockedNative } from '../native/NativeBridgeService';
 import { useSettingsStore } from '../store/settingsStore';
 import { colors } from '../theme/tokens';
+import { MONITORED_PACKAGE_LIST, PACKAGE_LABELS } from '../utils/appPackages';
 
 type SettingLimitKey =
   | 'tiktokLimitMinutes'
   | 'instagramLimitMinutes'
   | 'youtubeLimitMinutes'
   | 'lockDurationMinutes';
+
+type ActiveLockItem = {
+  packageName: (typeof MONITORED_PACKAGE_LIST)[number];
+  appName: string;
+  lockedUntil: number | null;
+};
 
 type LimitControlProps = {
   label: string;
@@ -60,11 +69,77 @@ export function SettingsScreen(): React.JSX.Element {
   const navigation = useNavigation<any>();
   const userSettings = useSettingsStore(state => state.userSettings);
   const updateLimit = useSettingsStore(state => state.updateLimit);
+  const [activeLocks, setActiveLocks] = useState<ActiveLockItem[]>([]);
+  const isMountedRef = useRef(true);
 
   const adjustLimit = (key: SettingLimitKey, delta: number, min: number, max: number): void => {
     const nextValue = Math.max(min, Math.min(max, userSettings[key] + delta));
     updateLimit(key, nextValue);
   };
+
+  const refreshActiveLocks = useCallback(async (): Promise<void> => {
+    try {
+      const locks: ActiveLockItem[] = [];
+
+      for (const packageName of MONITORED_PACKAGE_LIST) {
+        const lockState = getLockState(packageName);
+        if (lockState) {
+          locks.push({
+            packageName,
+            appName: PACKAGE_LABELS[packageName] ?? packageName,
+            lockedUntil: lockState.lockedUntil,
+          });
+          continue;
+        }
+
+        const nativeBlocked = await isAppBlockedNative(packageName);
+        if (nativeBlocked) {
+          locks.push({
+            packageName,
+            appName: PACKAGE_LABELS[packageName] ?? packageName,
+            lockedUntil: null,
+          });
+        }
+      }
+
+      if (isMountedRef.current) {
+        setActiveLocks(locks);
+      }
+    } catch (error) {
+      if (__DEV__) {
+        console.warn('[SettingsScreen] Failed to refresh active locks.', error);
+      }
+
+      if (isMountedRef.current) {
+        setActiveLocks([]);
+      }
+    }
+  }, []);
+
+  const handleUnlock = async (packageName: string): Promise<void> => {
+    try {
+      await unblockApp(packageName);
+      await refreshActiveLocks();
+    } catch (error) {
+      if (__DEV__) {
+        console.warn('[SettingsScreen] Failed to unlock app.', error);
+      }
+    }
+  };
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    void refreshActiveLocks();
+
+    const interval = setInterval(() => {
+      void refreshActiveLocks();
+    }, 3000);
+
+    return () => {
+      isMountedRef.current = false;
+      clearInterval(interval);
+    };
+  }, [refreshActiveLocks]);
 
   return (
     <AppScreen
@@ -110,6 +185,30 @@ export function SettingsScreen(): React.JSX.Element {
         />
         <MetricRow label="Warnings" value="50%, 75%, 100%" />
         <Text style={styles.note}>When a limit is exceeded, lock overlay blocks the selected app until timer ends.</Text>
+      </SectionCard>
+
+      <SectionCard title="Active App Locks">
+        {activeLocks.length > 0 ? (
+          activeLocks.map(lock => (
+            <View key={lock.packageName} style={styles.lockRow}>
+              <View style={styles.lockInfoWrap}>
+                <Text style={styles.lockAppName}>{lock.appName}</Text>
+                <Text style={styles.lockMeta}>
+                  {lock.lockedUntil
+                    ? `Locked until ${new Date(lock.lockedUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                    : 'Blocked by native service'}
+                </Text>
+              </View>
+              <PrimaryButton
+                label={`Unlock ${lock.appName}`}
+                variant="ghost"
+                onPress={() => void handleUnlock(lock.packageName)}
+              />
+            </View>
+          ))
+        ) : (
+          <Text style={styles.note}>No apps are currently blocked.</Text>
+        )}
       </SectionCard>
 
       <Text style={styles.sectionLabel}>Account & Privacy</Text>
@@ -188,5 +287,24 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: colors.text,
+  },
+  lockRow: {
+    gap: 8,
+    paddingBottom: 8,
+    marginBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  lockInfoWrap: {
+    gap: 2,
+  },
+  lockAppName: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  lockMeta: {
+    color: colors.textMuted,
+    fontSize: 12,
   },
 });
