@@ -4,6 +4,7 @@ import android.app.AppOpsManager
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.os.Process
+import androidx.core.app.NotificationManagerCompat
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
@@ -68,6 +69,25 @@ class AppUsageModule(private val reactContext: ReactApplicationContext) :
       promise.resolve(result)
     } catch (error: Exception) {
       promise.reject("E_USAGE_STATS", error.message, error)
+    }
+  }
+
+  @ReactMethod
+  fun hasUsageAccessPermission(promise: Promise) {
+    try {
+      promise.resolve(hasUsageAccessPermission())
+    } catch (error: Exception) {
+      promise.reject("E_PERMISSION_STATUS", error.message, error)
+    }
+  }
+
+  @ReactMethod
+  fun areNotificationsEnabled(promise: Promise) {
+    try {
+      val enabled = NotificationManagerCompat.from(reactContext).areNotificationsEnabled()
+      promise.resolve(enabled)
+    } catch (error: Exception) {
+      promise.reject("E_NOTIFICATION_STATUS", error.message, error)
     }
   }
 

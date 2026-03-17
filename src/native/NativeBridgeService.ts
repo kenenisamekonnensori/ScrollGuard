@@ -1,4 +1,4 @@
-import { NativeModules } from 'react-native';
+import { NativeModules, PermissionsAndroid, Platform } from 'react-native';
 
 /**
  * Usage stats payload keyed by Android package name.
@@ -11,6 +11,8 @@ export type UsageStatsResponse = Record<string, number>;
  */
 type AppUsageModuleContract = {
   getUsageStats?: () => Promise<UsageStatsResponse>;
+  hasUsageAccessPermission?: () => Promise<boolean>;
+  areNotificationsEnabled?: () => Promise<boolean>;
 };
 
 /**
@@ -19,6 +21,7 @@ type AppUsageModuleContract = {
 type ScrollDetectionModuleContract = {
   startScrollDetection?: () => void;
   stopScrollDetection?: () => void;
+  isAccessibilityServiceEnabled?: () => Promise<boolean>;
 };
 
 /**
@@ -38,6 +41,34 @@ const { AppUsageModule, ScrollDetectionModule, AppBlockingModule } =
   };
 
 /**
+ * Indicates whether each permission status can be checked on the current binary/runtime.
+ */
+export const permissionStatusSupport = {
+  usageAccess: Boolean(AppUsageModule?.hasUsageAccessPermission || AppUsageModule?.getUsageStats),
+  accessibility: Boolean(ScrollDetectionModule?.isAccessibilityServiceEnabled),
+  notifications: Boolean(AppUsageModule?.areNotificationsEnabled) || Platform.OS === 'android',
+};
+
+/**
+ * Returns permission-status capability checks at call-time.
+ * This avoids stale false negatives that can happen when native modules are initialized after import time.
+ */
+export function getPermissionStatusSupport(): {
+  usageAccess: boolean;
+  accessibility: boolean;
+  notifications: boolean;
+} {
+  const appUsageModule = NativeModules.AppUsageModule as AppUsageModuleContract | undefined;
+  const scrollDetectionModule = NativeModules.ScrollDetectionModule as ScrollDetectionModuleContract | undefined;
+
+  return {
+    usageAccess: Boolean(appUsageModule?.hasUsageAccessPermission || appUsageModule?.getUsageStats),
+    accessibility: Boolean(scrollDetectionModule?.isAccessibilityServiceEnabled),
+    notifications: Boolean(appUsageModule?.areNotificationsEnabled) || Platform.OS === 'android',
+  };
+}
+
+/**
  * Retrieves today's app usage stats from native code.
  * Placeholder behavior: returns an empty object when native module is unavailable.
  */
@@ -47,6 +78,56 @@ export async function getUsageStats(): Promise<UsageStatsResponse> {
   }
 
   return {};
+}
+
+/**
+ * Checks whether Android Usage Access permission is granted.
+ * Returns false if native status API is unavailable.
+ */
+export async function hasUsageAccessPermission(): Promise<boolean> {
+  if (AppUsageModule?.hasUsageAccessPermission) {
+    return AppUsageModule.hasUsageAccessPermission();
+  }
+
+  // Fallback path for older native binaries where explicit permission-status API is not exposed yet.
+  // If usage stats call succeeds, usage access is effectively granted.
+  if (AppUsageModule?.getUsageStats) {
+    try {
+      await AppUsageModule.getUsageStats();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Checks whether app notifications are currently enabled.
+ * Returns false if native status API is unavailable.
+ */
+export async function areNotificationsEnabled(): Promise<boolean> {
+  if (AppUsageModule?.areNotificationsEnabled) {
+    return AppUsageModule.areNotificationsEnabled();
+  }
+
+  // Fallback for Android builds without native notification-status API.
+  if (Platform.OS === 'android') {
+    if (typeof Platform.Version === 'number' && Platform.Version >= 33) {
+      try {
+        const result = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
+        return result;
+      } catch {
+        return false;
+      }
+    }
+
+    // Android < 13 has no runtime notifications permission; treat as enabled in fallback mode.
+    return true;
+  }
+
+  return false;
 }
 
 /**
@@ -63,6 +144,18 @@ export function startScrollDetection(): void {
  */
 export function stopScrollDetection(): void {
   ScrollDetectionModule?.stopScrollDetection?.();
+}
+
+/**
+ * Checks whether ScrollGuard accessibility service is enabled.
+ * Returns false if native status API is unavailable.
+ */
+export async function isAccessibilityServiceEnabled(): Promise<boolean> {
+  if (ScrollDetectionModule?.isAccessibilityServiceEnabled) {
+    return ScrollDetectionModule.isAccessibilityServiceEnabled();
+  }
+
+  return false;
 }
 
 /**

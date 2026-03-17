@@ -1,7 +1,10 @@
 package com.scrollguard.nativebridge
 
+import android.content.ComponentName
+import android.provider.Settings
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
+import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.modules.core.DeviceEventManagerModule
 
@@ -32,5 +35,43 @@ class ScrollDetectionModule(private val reactContext: ReactApplicationContext) :
 
   @ReactMethod
   fun stopScrollDetection() {
+  }
+
+  @ReactMethod
+  fun isAccessibilityServiceEnabled(promise: Promise) {
+    try {
+      val accessibilityEnabled = Settings.Secure.getInt(
+        reactContext.contentResolver,
+        Settings.Secure.ACCESSIBILITY_ENABLED,
+        0,
+      ) == 1
+
+      if (!accessibilityEnabled) {
+        promise.resolve(false)
+        return
+      }
+
+      val enabledServices = Settings.Secure.getString(
+        reactContext.contentResolver,
+        Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+      ) ?: ""
+
+      val componentName = ComponentName(reactContext, ScrollGuardAccessibilityService::class.java)
+      val expectedFullName = componentName.flattenToString()
+      val expectedShortName = componentName.flattenToShortString()
+
+      val isEnabled = enabledServices
+        .split(':')
+        .map { it.trim() }
+        .any { serviceEntry ->
+          serviceEntry.equals(expectedFullName, ignoreCase = true)
+            || serviceEntry.equals(expectedShortName, ignoreCase = true)
+            || serviceEntry.endsWith("/${ScrollGuardAccessibilityService::class.java.simpleName}", ignoreCase = true)
+        }
+
+      promise.resolve(isEnabled)
+    } catch (error: Exception) {
+      promise.reject("E_ACCESSIBILITY_STATUS", error.message, error)
+    }
   }
 }
