@@ -11,6 +11,9 @@ import { useSettingsStore } from '../store/settingsStore';
 import { colors } from '../theme/tokens';
 import { MONITORED_PACKAGE_LIST, PACKAGE_LABELS } from '../utils/appPackages';
 
+// A moderate interval reduces repeated MMKV/native calls while keeping lock state reasonably fresh.
+const ACTIVE_LOCKS_REFRESH_MS = 10_000;
+
 type SettingLimitKey =
   | 'tiktokLimitMinutes'
   | 'instagramLimitMinutes'
@@ -133,7 +136,7 @@ export function SettingsScreen(): React.JSX.Element {
 
     const interval = setInterval(() => {
       void refreshActiveLocks();
-    }, 3000);
+    }, ACTIVE_LOCKS_REFRESH_MS);
 
     return () => {
       isMountedRef.current = false;

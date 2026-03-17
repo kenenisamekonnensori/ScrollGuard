@@ -33,11 +33,11 @@ export async function startMonitoring(): Promise<void> {
     return;
   }
 
-  isMonitoring = true;
-
   if (isTestEnvironment) {
     return;
   }
+
+  isMonitoring = true;
 
   scrollService.startListening();
 

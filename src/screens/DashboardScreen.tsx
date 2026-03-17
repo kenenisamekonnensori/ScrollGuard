@@ -7,31 +7,15 @@ import { SectionCard } from '../components/ui/SectionCard';
 import { useUsageStore } from '../store/usageStore';
 import { colors } from '../theme/tokens';
 import { refreshMonitoringNow } from '../services/MonitoringService';
-
-const MONITORED_APPS = [
-  {
-    packageName: 'com.zhiliaoapp.musically',
-    appName: 'TikTok',
-    icon: '▶️',
-  },
-  {
-    packageName: 'com.instagram.android',
-    appName: 'Instagram',
-    icon: '📷',
-  },
-  {
-    packageName: 'com.google.android.youtube',
-    appName: 'YouTube',
-    icon: '📺',
-  },
-];
-
-function formatMinutes(seconds: number): number {
-  return Math.floor(seconds / 60);
-}
+import {
+  MONITORED_PACKAGE_LIST,
+  PACKAGE_ICONS,
+  PACKAGE_LABELS,
+} from '../utils/appPackages';
+import { toMinutes } from '../utils/time';
 
 function formatDuration(seconds: number): string {
-  const minutes = formatMinutes(seconds);
+  const minutes = toMinutes(seconds);
   if (minutes >= 60) {
     const hours = Math.floor(minutes / 60);
     const remainderMinutes = minutes % 60;
@@ -63,25 +47,26 @@ export function DashboardScreen(): React.JSX.Element {
       subtitle="Live control panel for today’s short-video behavior and lock protection.">
       <SectionCard>
         <Text style={styles.heroLabel}>Time spent today</Text>
-        <Text style={styles.heroValue}>{Math.floor(totalSeconds / 60)} min</Text>
+        <Text style={styles.heroValue}>{toMinutes(totalSeconds)} min</Text>
         <Text style={styles.heroSub}>Videos watched: {totalVideos}</Text>
         <Text style={styles.heroSub}>Last sync: {lastSyncLabel}</Text>
       </SectionCard>
 
       <SectionCard title="App usage summary">
-        {MONITORED_APPS.map((app, index) => {
-          const seconds = usageStats[app.packageName] ?? 0;
-          const videos = videoCounts[app.packageName] ?? 0;
-          const isLast = index === MONITORED_APPS.length - 1;
+        {/* Read app identity from shared constants so package/name changes happen in one place. */}
+        {MONITORED_PACKAGE_LIST.map((packageName, index) => {
+          const seconds = usageStats[packageName] ?? 0;
+          const videos = videoCounts[packageName] ?? 0;
+          const isLast = index === MONITORED_PACKAGE_LIST.length - 1;
 
           return (
-            <View key={app.packageName} style={isLast ? styles.appRowNoBorder : styles.appRow}>
+            <View key={packageName} style={isLast ? styles.appRowNoBorder : styles.appRow}>
               <View style={styles.appInfo}>
                 <View style={styles.appIconWrap}>
-                  <Text style={styles.appIcon}>{app.icon}</Text>
+                  <Text style={styles.appIcon}>{PACKAGE_ICONS[packageName] ?? '📱'}</Text>
                 </View>
                 <View>
-                  <Text style={styles.appName}>{app.appName}</Text>
+                  <Text style={styles.appName}>{PACKAGE_LABELS[packageName] ?? packageName}</Text>
                   <Text style={styles.appSub}>Videos: {videos}</Text>
                 </View>
               </View>

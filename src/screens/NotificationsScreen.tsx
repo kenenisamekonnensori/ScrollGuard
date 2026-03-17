@@ -8,26 +8,17 @@ import { useSettingsStore } from '../store/settingsStore';
 import { useUsageStore } from '../store/usageStore';
 import { colors } from '../theme/tokens';
 import {
+  LIMIT_SETTING_KEYS,
   MONITORED_PACKAGE_LIST,
-  MONITORED_PACKAGES,
   PACKAGE_LABELS,
 } from '../utils/appPackages';
+import { toMinutes } from '../utils/time';
 
 type AlertItem = {
   id: string;
   message: string;
   severity: 'info' | 'warning' | 'danger';
 };
-
-const LIMIT_KEYS: Record<string, keyof ReturnType<typeof useSettingsStore.getState>['userSettings']> = {
-  [MONITORED_PACKAGES.tiktok]: 'tiktokLimitMinutes',
-  [MONITORED_PACKAGES.instagram]: 'instagramLimitMinutes',
-  [MONITORED_PACKAGES.youtube]: 'youtubeLimitMinutes',
-};
-
-function toMinutes(seconds: number): number {
-  return Math.floor(seconds / 60);
-}
 
 function getAlertIcon(severity: AlertItem['severity']): string {
   if (severity === 'danger') {
@@ -52,7 +43,7 @@ export function NotificationsScreen(): React.JSX.Element {
   MONITORED_PACKAGE_LIST.forEach(packageName => {
     const appName = PACKAGE_LABELS[packageName] ?? packageName;
     const usageMinutes = toMinutes(usageStats[packageName] ?? 0);
-    const limitMinutes = userSettings[LIMIT_KEYS[packageName]];
+    const limitMinutes = userSettings[LIMIT_SETTING_KEYS[packageName]];
     const usagePercent = limitMinutes > 0 ? (usageMinutes / limitMinutes) * 100 : 0;
     const lockState = getLockState(packageName);
 

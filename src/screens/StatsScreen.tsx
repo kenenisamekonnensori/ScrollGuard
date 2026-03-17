@@ -5,16 +5,8 @@ import { MetricRow } from '../components/ui/MetricRow';
 import { SectionCard } from '../components/ui/SectionCard';
 import { useUsageStore } from '../store/usageStore';
 import { colors } from '../theme/tokens';
-
-const MONITORED_APPS = [
-  { packageName: 'com.zhiliaoapp.musically', appName: 'TikTok' },
-  { packageName: 'com.instagram.android', appName: 'Instagram' },
-  { packageName: 'com.google.android.youtube', appName: 'YouTube' },
-];
-
-function toMinutes(seconds: number): number {
-  return Math.floor(seconds / 60);
-}
+import { MONITORED_PACKAGE_LIST, PACKAGE_LABELS } from '../utils/appPackages';
+import { toMinutes } from '../utils/time';
 
 function formatMinutes(minutes: number): string {
   if (minutes >= 60) {
@@ -35,11 +27,13 @@ export function StatsScreen(): React.JSX.Element {
   const weeklyMinutesEstimate = dailyMinutes * 7;
   const weeklyVideosEstimate = totalVideos * 7;
 
-  const appRows = MONITORED_APPS.map(app => {
-    const minutes = toMinutes(usageStats[app.packageName] ?? 0);
-    const videos = videoCounts[app.packageName] ?? 0;
+  // Build rows from shared constants so monitored package changes propagate consistently.
+  const appRows = MONITORED_PACKAGE_LIST.map(packageName => {
+    const minutes = toMinutes(usageStats[packageName] ?? 0);
+    const videos = videoCounts[packageName] ?? 0;
     return {
-      ...app,
+      packageName,
+      appName: PACKAGE_LABELS[packageName] ?? packageName,
       minutes,
       videos,
     };

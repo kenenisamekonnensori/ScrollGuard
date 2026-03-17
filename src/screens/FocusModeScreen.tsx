@@ -11,10 +11,11 @@ import { useSettingsStore } from '../store/settingsStore';
 import { useUsageStore } from '../store/usageStore';
 import { colors } from '../theme/tokens';
 import {
+  LIMIT_SETTING_KEYS,
   MONITORED_PACKAGE_LIST,
-  MONITORED_PACKAGES,
   PACKAGE_LABELS,
 } from '../utils/appPackages';
+import { toMinutes } from '../utils/time';
 
 type AppFocusStatus = {
   packageName: string;
@@ -30,16 +31,6 @@ type ActiveLockItem = {
   appName: string;
   lockedUntil: number;
 };
-
-const LIMIT_KEYS: Record<string, keyof ReturnType<typeof useSettingsStore.getState>['userSettings']> = {
-  [MONITORED_PACKAGES.tiktok]: 'tiktokLimitMinutes',
-  [MONITORED_PACKAGES.instagram]: 'instagramLimitMinutes',
-  [MONITORED_PACKAGES.youtube]: 'youtubeLimitMinutes',
-};
-
-function toMinutes(seconds: number): number {
-  return Math.floor(seconds / 60);
-}
 
 function formatRemainingMinutes(minutes: number): string {
   if (minutes <= 0) {
@@ -58,7 +49,7 @@ export function FocusModeScreen(): React.JSX.Element {
   const appStatuses: AppFocusStatus[] = MONITORED_PACKAGE_LIST.map(packageName => {
     const appName = PACKAGE_LABELS[packageName] ?? packageName;
     const usageMinutes = toMinutes(usageStats[packageName] ?? 0);
-    const limitKey = LIMIT_KEYS[packageName];
+    const limitKey = LIMIT_SETTING_KEYS[packageName];
     const limitMinutes = userSettings[limitKey];
     const remainingMinutes = Math.max(limitMinutes - usageMinutes, 0);
     const usagePercent = limitMinutes > 0 ? Math.min((usageMinutes / limitMinutes) * 100, 100) : 0;
