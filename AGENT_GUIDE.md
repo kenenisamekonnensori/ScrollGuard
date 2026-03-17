@@ -34,8 +34,7 @@ Rules:
 Development strategy:
 
 1. Complete Phase 1 tasks first.
-2. Commit after each task.
-3. Ensure code compiles before moving to the next phase.
+2. Ensure code compiles before moving to the next phase.
 
 Goal:
 

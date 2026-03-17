@@ -14,6 +14,14 @@ const DEFAULT_USER_SETTINGS: UserSettings = {
   lockDurationMinutes: 30,
 };
 
+function sanitizeMinutes(value: unknown, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    return fallback;
+  }
+
+  return Math.floor(value);
+}
+
 /**
  * Limits that can be updated individually from settings screens/forms.
  */
@@ -36,7 +44,30 @@ interface SettingsState {
  * Reads persisted user settings from MMKV and falls back to defaults.
  */
 function getInitialUserSettings(): UserSettings {
-  return getValue<UserSettings>(SETTINGS_STORAGE_KEY) ?? DEFAULT_USER_SETTINGS;
+  const persisted = getValue<Partial<UserSettings>>(SETTINGS_STORAGE_KEY);
+
+  if (!persisted) {
+    return DEFAULT_USER_SETTINGS;
+  }
+
+  return {
+    tiktokLimitMinutes: sanitizeMinutes(
+      persisted.tiktokLimitMinutes,
+      DEFAULT_USER_SETTINGS.tiktokLimitMinutes,
+    ),
+    instagramLimitMinutes: sanitizeMinutes(
+      persisted.instagramLimitMinutes,
+      DEFAULT_USER_SETTINGS.instagramLimitMinutes,
+    ),
+    youtubeLimitMinutes: sanitizeMinutes(
+      persisted.youtubeLimitMinutes,
+      DEFAULT_USER_SETTINGS.youtubeLimitMinutes,
+    ),
+    lockDurationMinutes: sanitizeMinutes(
+      persisted.lockDurationMinutes,
+      DEFAULT_USER_SETTINGS.lockDurationMinutes,
+    ),
+  };
 }
 
 /**
@@ -59,9 +90,10 @@ export const useSettingsStore = create<SettingsState>(set => ({
    */
   updateLimit: (key, value) => {
     set(state => {
+      const safeValue = sanitizeMinutes(value, state.userSettings[key]);
       const nextSettings: UserSettings = {
         ...state.userSettings,
-        [key]: value,
+        [key]: safeValue,
       };
 
       setValue(SETTINGS_STORAGE_KEY, nextSettings);

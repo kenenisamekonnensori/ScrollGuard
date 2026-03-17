@@ -1,7 +1,5 @@
 import {
-  NativeEventEmitter,
-  NativeModule,
-  NativeModules,
+  DeviceEventEmitter,
   EmitterSubscription,
 } from 'react-native';
 import { startScrollDetection, stopScrollDetection } from '../native/NativeBridgeService';
@@ -52,13 +50,7 @@ class ScrollService {
 
     startScrollDetection();
 
-    const scrollModule = NativeModules.ScrollDetectionModule as NativeModule | undefined;
-    if (!scrollModule) {
-      return;
-    }
-
-    const eventEmitter = new NativeEventEmitter(scrollModule);
-    this.subscription = eventEmitter.addListener(
+    this.subscription = DeviceEventEmitter.addListener(
       SCROLL_EVENT_NAME,
       (event: ScrollEventPayload) => {
         const packageName = event.packageName;
