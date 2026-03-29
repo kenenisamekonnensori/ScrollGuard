@@ -1,16 +1,29 @@
 import React from 'react';
+import { Alert } from 'react-native';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { AppScreen } from '../components/ui/AppScreen';
 import { PrimaryButton } from '../components/ui/PrimaryButton';
 import { SectionCard } from '../components/ui/SectionCard';
 import { colors, radii } from '../theme/tokens';
+import {
+  BACKEND_COMING_SOON_MESSAGE,
+  IS_BACKEND_READY,
+} from '../utils/featureFlags';
 
 export function LoginScreen(): React.JSX.Element {
   const navigation = useNavigation<any>();
+  const handleBackendAuth = (): void => {
+    if (!IS_BACKEND_READY) {
+      Alert.alert('Coming soon', BACKEND_COMING_SOON_MESSAGE);
+      return;
+    }
+
+    navigation.replace('MainTabs');
+  };
 
   return (
-    <AppScreen title="Welcome Back" subtitle="Sign in to continue your focus journey.">
+    <AppScreen title="Welcome Back" subtitle="Sign in is optional. Guest mode supports full local tracking and blocking.">
       <View style={styles.brandTile}>
         <Text style={styles.brandIcon}>🛡️</Text>
       </View>
@@ -22,8 +35,9 @@ export function LoginScreen(): React.JSX.Element {
         <TextInput placeholder="••••••••" placeholderTextColor="#8B98AC" secureTextEntry style={styles.input} />
       </SectionCard>
 
-      <PrimaryButton label="Sign In" onPress={() => navigation.replace('MainTabs')} />
-      <PrimaryButton label="Continue with Google" variant="secondary" onPress={() => {}} />
+      <PrimaryButton label="Continue as Guest" onPress={() => navigation.replace('MainTabs')} />
+      <PrimaryButton label="Sign In (Coming soon)" variant="secondary" onPress={handleBackendAuth} />
+      <PrimaryButton label="Continue with Google (Coming soon)" variant="secondary" onPress={handleBackendAuth} />
       <PrimaryButton label="Forgot password?" variant="ghost" onPress={() => navigation.navigate('ForgotPasswordScreen')} />
       <PrimaryButton label="Create account" variant="ghost" onPress={() => navigation.navigate('SignUpScreen')} />
     </AppScreen>

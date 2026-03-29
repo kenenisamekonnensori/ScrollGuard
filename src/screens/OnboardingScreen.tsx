@@ -31,6 +31,7 @@ export function OnboardingScreen(): React.JSX.Element {
         <Text style={styles.bullet}>• Daily time in TikTok / Instagram / YouTube</Text>
         <Text style={styles.bullet}>• Estimated videos watched</Text>
         <Text style={styles.bullet}>• Warning and lock thresholds</Text>
+        <Text style={styles.note}>Guest mode is fully supported. Account sync is coming soon.</Text>
       </SectionCard>
 
       {Platform.OS === 'android' ? (
@@ -83,6 +84,7 @@ export function OnboardingScreen(): React.JSX.Element {
         label="Continue to Permissions"
         onPress={() => navigation.navigate('PermissionsSetupScreen')}
       />
+      <PrimaryButton label="Continue as Guest" variant="secondary" onPress={() => navigation.navigate('PermissionsSetupScreen')} />
       <PrimaryButton label="I already have an account" variant="ghost" onPress={() => navigation.navigate('LoginScreen')} />
     </AppScreen>
   );

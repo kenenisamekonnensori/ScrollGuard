@@ -1,11 +1,22 @@
 import React from 'react';
+import { Alert } from 'react-native';
 import { StyleSheet, Text, View } from 'react-native';
 import { AppScreen } from '../components/ui/AppScreen';
 import { PrimaryButton } from '../components/ui/PrimaryButton';
 import { SectionCard } from '../components/ui/SectionCard';
 import { colors } from '../theme/tokens';
+import {
+  BACKEND_COMING_SOON_MESSAGE,
+  IS_BACKEND_READY,
+} from '../utils/featureFlags';
 
 export function PremiumScreen(): React.JSX.Element {
+  const handlePremiumAction = (): void => {
+    if (!IS_BACKEND_READY) {
+      Alert.alert('Coming soon', BACKEND_COMING_SOON_MESSAGE);
+    }
+  };
+
   return (
     <AppScreen
       title="Premium Subscription"
@@ -30,8 +41,8 @@ export function PremiumScreen(): React.JSX.Element {
         <Text style={styles.priceMuted}>Free Plan — $0 forever</Text>
       </SectionCard>
 
-      <PrimaryButton label="Start 7-Day Free Trial" onPress={() => {}} />
-      <PrimaryButton label="Restore Purchases" variant="secondary" onPress={() => {}} />
+      <PrimaryButton label="Start 7-Day Free Trial (Coming soon)" onPress={handlePremiumAction} />
+      <PrimaryButton label="Restore Purchases (Coming soon)" variant="secondary" onPress={handlePremiumAction} />
     </AppScreen>
   );
 }

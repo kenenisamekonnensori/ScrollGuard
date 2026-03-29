@@ -1,16 +1,29 @@
 import React from 'react';
+import { Alert } from 'react-native';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { AppScreen } from '../components/ui/AppScreen';
 import { PrimaryButton } from '../components/ui/PrimaryButton';
 import { SectionCard } from '../components/ui/SectionCard';
 import { colors, radii } from '../theme/tokens';
+import {
+  BACKEND_COMING_SOON_MESSAGE,
+  IS_BACKEND_READY,
+} from '../utils/featureFlags';
 
 export function SignUpScreen(): React.JSX.Element {
   const navigation = useNavigation<any>();
+  const handleBackendSignUp = (): void => {
+    if (!IS_BACKEND_READY) {
+      Alert.alert('Coming soon', BACKEND_COMING_SOON_MESSAGE);
+      return;
+    }
+
+    navigation.replace('MainTabs');
+  };
 
   return (
-    <AppScreen title="Create Account" subtitle="Start building healthier screen habits today.">
+    <AppScreen title="Create Account" subtitle="Account sync is coming soon. You can use Guest Mode today.">
       <View style={styles.heroCard}>
         <Text style={styles.heroIcon}>✨</Text>
         <Text style={styles.heroText}>Join 50,000+ people reclaiming their focus.</Text>
@@ -25,8 +38,9 @@ export function SignUpScreen(): React.JSX.Element {
         <TextInput placeholder="Create password" placeholderTextColor="#8B98AC" secureTextEntry style={styles.input} />
       </SectionCard>
 
-      <PrimaryButton label="Create Account" onPress={() => navigation.replace('MainTabs')} />
-      <PrimaryButton label="Continue with Google" variant="secondary" onPress={() => {}} />
+      <PrimaryButton label="Continue as Guest" onPress={() => navigation.replace('MainTabs')} />
+      <PrimaryButton label="Create Account (Coming soon)" variant="secondary" onPress={handleBackendSignUp} />
+      <PrimaryButton label="Continue with Google (Coming soon)" variant="secondary" onPress={handleBackendSignUp} />
       <PrimaryButton label="Already have an account? Sign in" variant="ghost" onPress={() => navigation.navigate('LoginScreen')} />
     </AppScreen>
   );

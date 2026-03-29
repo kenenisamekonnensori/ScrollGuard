@@ -1,18 +1,23 @@
 import React from 'react';
+import { Alert } from 'react-native';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { AppScreen } from '../components/ui/AppScreen';
 import { PrimaryButton } from '../components/ui/PrimaryButton';
 import { SectionCard } from '../components/ui/SectionCard';
 import { colors, radii } from '../theme/tokens';
+import { BACKEND_COMING_SOON_MESSAGE } from '../utils/featureFlags';
 
 export function ForgotPasswordScreen(): React.JSX.Element {
   const navigation = useNavigation<any>();
+  const handleReset = (): void => {
+    Alert.alert('Coming soon', BACKEND_COMING_SOON_MESSAGE);
+  };
 
   return (
     <AppScreen
       title="Forgot Password"
-      subtitle="Enter your email and we’ll send reset instructions.">
+      subtitle="Password reset requires backend auth. Guest mode remains fully available.">
       <View style={styles.resetVisual}>
         <Text style={styles.resetIcon}>🔐</Text>
       </View>
@@ -22,7 +27,8 @@ export function ForgotPasswordScreen(): React.JSX.Element {
         <TextInput placeholder="you@example.com" placeholderTextColor="#8B98AC" style={styles.input} />
       </SectionCard>
 
-      <PrimaryButton label="Send Reset Link" onPress={() => navigation.navigate('LoginScreen')} />
+      <PrimaryButton label="Continue as Guest" onPress={() => navigation.replace('MainTabs')} />
+      <PrimaryButton label="Send Reset Link (Coming soon)" variant="secondary" onPress={handleReset} />
       <PrimaryButton label="Back to Login" variant="ghost" onPress={() => navigation.goBack()} />
       <Text style={styles.helpText}>Having trouble? Contact ScrollGuard Support.</Text>
     </AppScreen>

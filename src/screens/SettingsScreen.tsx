@@ -9,7 +9,7 @@ import { getLockState, unblockApp } from '../features/blocking/blockingControlle
 import { isAppBlocked as isAppBlockedNative } from '../native/NativeBridgeService';
 import { useSettingsStore } from '../store/settingsStore';
 import { colors } from '../theme/tokens';
-import { MONITORED_PACKAGE_LIST, PACKAGE_LABELS } from '../utils/appPackages';
+import { MONITORED_PACKAGE_LIST, PACKAGE_ICONS, PACKAGE_LABELS } from '../utils/appPackages';
 
 // A moderate interval reduces repeated MMKV/native calls while keeping lock state reasonably fresh.
 const ACTIVE_LOCKS_REFRESH_MS = 10_000;
@@ -144,10 +144,49 @@ export function SettingsScreen(): React.JSX.Element {
     };
   }, [refreshActiveLocks]);
 
+  const averageDailyLimit = Math.round(
+    (userSettings.tiktokLimitMinutes
+      + userSettings.instagramLimitMinutes
+      + userSettings.youtubeLimitMinutes)
+      / 3,
+  );
+
+  const protectionStatus =
+    activeLocks.length === 0
+      ? 'No active app locks right now'
+      : `${activeLocks.length} active lock${activeLocks.length > 1 ? 's' : ''} currently enforced`;
+
   return (
     <AppScreen
       title="Settings"
       subtitle="Customize limits, lock behavior, alerts, and account controls.">
+      <SectionCard>
+        <View style={styles.summaryRow}>
+          <View style={[styles.summaryChip, styles.summaryChipBlue]}>
+            <Text style={styles.summaryChipLabel}>Avg daily limit</Text>
+            <Text style={styles.summaryChipValue}>{averageDailyLimit} min</Text>
+          </View>
+          <View style={[styles.summaryChip, styles.summaryChipGreen]}>
+            <Text style={styles.summaryChipLabel}>Lock duration</Text>
+            <Text style={styles.summaryChipValue}>{userSettings.lockDurationMinutes} min</Text>
+          </View>
+        </View>
+      </SectionCard>
+
+      <SectionCard title="Protection Status">
+        <View
+          style={[
+            styles.protectionStatusBox,
+            activeLocks.length > 0 ? styles.protectionStatusWarn : styles.protectionStatusSafe,
+          ]}>
+          <Text style={styles.protectionStatusTitle}>
+            {activeLocks.length > 0 ? 'Focus shield active' : 'Focus shield ready'}
+          </Text>
+          <Text style={styles.protectionStatusText}>{protectionStatus}</Text>
+          <Text style={styles.protectionStatusHint}>All checks are local-first and work in Guest Mode.</Text>
+        </View>
+      </SectionCard>
+
       <Text style={styles.sectionLabel}>Usage Limits</Text>
       <SectionCard title="Daily Limits">
         <LimitControl
@@ -194,13 +233,21 @@ export function SettingsScreen(): React.JSX.Element {
         {activeLocks.length > 0 ? (
           activeLocks.map(lock => (
             <View key={lock.packageName} style={styles.lockRow}>
-              <View style={styles.lockInfoWrap}>
-                <Text style={styles.lockAppName}>{lock.appName}</Text>
-                <Text style={styles.lockMeta}>
-                  {lock.lockedUntil
-                    ? `Locked until ${new Date(lock.lockedUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-                    : 'Blocked by native service'}
-                </Text>
+              <View style={styles.lockTopRow}>
+                <View style={styles.lockInfoWrap}>
+                  <View style={styles.lockTitleRow}>
+                    <Text style={styles.lockAppIcon}>{PACKAGE_ICONS[lock.packageName] ?? '📱'}</Text>
+                    <Text style={styles.lockAppName}>{lock.appName}</Text>
+                  </View>
+                  <Text style={styles.lockMeta}>
+                    {lock.lockedUntil
+                      ? `Locked until ${new Date(lock.lockedUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                      : 'Blocked by native service'}
+                  </Text>
+                </View>
+                <View style={styles.lockBadgeWrap}>
+                  <Text style={styles.lockBadge}>LOCKED</Text>
+                </View>
               </View>
               <PrimaryButton
                 label={`Unlock ${lock.appName}`}
@@ -227,6 +274,64 @@ export function SettingsScreen(): React.JSX.Element {
 }
 
 const styles = StyleSheet.create({
+  summaryRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  summaryChip: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  summaryChipBlue: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#BFDBFE',
+  },
+  summaryChipGreen: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#86EFAC',
+  },
+  summaryChipLabel: {
+    color: '#475569',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  summaryChipValue: {
+    color: '#0F172A',
+    fontSize: 22,
+    fontWeight: '800',
+    marginTop: 2,
+  },
+  protectionStatusBox: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 12,
+    gap: 4,
+  },
+  protectionStatusSafe: {
+    backgroundColor: '#F0F9FF',
+    borderColor: '#7DD3FC',
+  },
+  protectionStatusWarn: {
+    backgroundColor: '#FFF7ED',
+    borderColor: '#FDBA74',
+  },
+  protectionStatusTitle: {
+    color: '#0F172A',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  protectionStatusText: {
+    color: '#0F172A',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  protectionStatusHint: {
+    color: '#64748B',
+    fontSize: 12,
+  },
   sectionLabel: {
     fontSize: 11,
     textTransform: 'uppercase',
@@ -293,13 +398,27 @@ const styles = StyleSheet.create({
   },
   lockRow: {
     gap: 8,
-    paddingBottom: 8,
-    marginBottom: 8,
+    paddingBottom: 10,
+    marginBottom: 10,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
+  lockTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
   lockInfoWrap: {
     gap: 2,
+  },
+  lockTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  lockAppIcon: {
+    fontSize: 14,
   },
   lockAppName: {
     color: colors.text,
@@ -309,5 +428,18 @@ const styles = StyleSheet.create({
   lockMeta: {
     color: colors.textMuted,
     fontSize: 12,
+  },
+  lockBadgeWrap: {
+    alignItems: 'flex-end',
+  },
+  lockBadge: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#0C4A6E',
+    backgroundColor: '#DBF4FB',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    letterSpacing: 0.4,
   },
 });
