@@ -1,157 +1,283 @@
 import React from 'react';
-import { Platform, StyleSheet, Text, View } from 'react-native';
+import {
+  Animated,
+  Easing,
+  FlatList,
+  LayoutChangeEvent,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { StepIndicator } from '../components/onboarding/StepIndicator';
 import { AppScreen } from '../components/ui/AppScreen';
 import { PrimaryButton } from '../components/ui/PrimaryButton';
-import { SectionCard } from '../components/ui/SectionCard';
-import { colors, typography } from '../theme/tokens';
-import { useNavigation } from '@react-navigation/native';
-import { openAndroidSettings, openAppSettings } from '../utils/settingsLinks';
+import { AwarenessScreen } from './onboarding/AwarenessScreen';
+import { HookScreen } from './onboarding/HookScreen';
+import { PermissionsScreen } from './onboarding/PermissionsScreen';
+import { StepContentProps, OnboardingStep } from './onboarding/types';
+import { ValueScreen } from './onboarding/ValueScreen';
 
-export function OnboardingScreen(): React.JSX.Element {
-  const navigation = useNavigation<any>();
+type AnimatedStepContentProps = {
+  children: React.ReactNode;
+};
+
+function AnimatedStepContent({ children }: AnimatedStepContentProps): React.JSX.Element {
+  const opacity = React.useRef(new Animated.Value(0)).current;
+  const translateY = React.useRef(new Animated.Value(10)).current;
+
+  React.useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 360,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration: 360,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [opacity, translateY]);
 
   return (
-    <AppScreen
-      title="Break the Scroll Loop"
-      subtitle="Understand your usage, enable required permissions, and set limits that protect your focus.">
-      <View style={styles.heroPanel}>
-        <View style={styles.heroGlow} />
-        <Text style={styles.heroTitle}>Endless scrolling is stealing your time</Text>
-        <Text style={styles.heroCaption}>Short-video apps are built to keep you hooked. ScrollGuard helps you break the cycle.</Text>
-      </View>
+    <Animated.View
+      style={[
+        styles.animatedStepContent,
+        {
+          opacity,
+          transform: [{ translateY }],
+        },
+      ]}>
+      {children}
+    </Animated.View>
+  );
+}
 
-      <SectionCard title="Step 1 — The problem">
-        <Text style={styles.body}>Infinite feeds are engineered to keep you engaged.</Text>
-        <Text style={styles.bullet}>• “5 minutes” often becomes 1+ hour.</Text>
-        <Text style={styles.bullet}>• Time feels invisible while scrolling.</Text>
-      </SectionCard>
+const ONBOARDING_STEPS: OnboardingStep[] = [
+  {
+    key: 'hook',
+    title: 'Take Your Time Back',
+    subtitle: 'Step 1 of 4 - Feel the cost',
+    Component: HookScreen,
+  },
+  {
+    key: 'awareness',
+    title: 'Build Awareness',
+    subtitle: 'Step 2 of 4 - See your patterns',
+    Component: AwarenessScreen,
+  },
+  {
+    key: 'value',
+    title: 'Protect Your Focus',
+    subtitle: 'Step 3 of 4 - Simple daily wins',
+    Component: ValueScreen,
+  },
+  {
+    key: 'permissions',
+    title: 'Turn Protection On',
+    subtitle: 'Step 4 of 4 - Enable permissions',
+    Component: PermissionsScreen,
+  },
+];
 
-      <SectionCard title="Step 2 — Tracking with clarity">
-        <Text style={styles.body}>ScrollGuard shows:</Text>
-        <Text style={styles.bullet}>• Daily time in TikTok / Instagram / YouTube</Text>
-        <Text style={styles.bullet}>• Estimated videos watched</Text>
-        <Text style={styles.bullet}>• Warning and lock thresholds</Text>
-        <Text style={styles.note}>Guest mode is fully supported. Account sync is coming soon.</Text>
-      </SectionCard>
+export function OnboardingContainer(): React.JSX.Element {
+  const navigation = useNavigation<any>();
+  const [currentStepIndex, setCurrentStepIndex] = React.useState(0);
+  const [pageWidth, setPageWidth] = React.useState(0);
+  const listRef = React.useRef<FlatList<OnboardingStep>>(null);
+  const progressValue = React.useRef(new Animated.Value(0)).current;
 
-      {Platform.OS === 'android' ? (
-        <SectionCard title="Required permissions">
-          <Text style={styles.body}>ScrollGuard needs these Android permissions to work correctly:</Text>
-          <Text style={styles.bullet}>• Usage Access — read app usage duration</Text>
-          <Text style={styles.bullet}>• Accessibility Service — detect scroll/foreground app</Text>
-          <Text style={styles.bullet}>• Notifications — send warnings and limit alerts</Text>
-          <Text style={styles.note}>
-            For notifications, open app settings and enable Notifications for ScrollGuard.
-          </Text>
+  const isFirstStep = currentStepIndex === 0;
+  const isLastStep = currentStepIndex === ONBOARDING_STEPS.length - 1;
+  const currentStep = ONBOARDING_STEPS[currentStepIndex];
 
-          <PrimaryButton
-            label="Open Usage Access Settings"
-            variant="secondary"
-            onPress={() => void openAndroidSettings('android.settings.USAGE_ACCESS_SETTINGS', 'OnboardingScreen')}
-          />
-          <PrimaryButton
-            label="Open Accessibility Settings"
-            variant="secondary"
-            onPress={() => void openAndroidSettings('android.settings.ACCESSIBILITY_SETTINGS', 'OnboardingScreen')}
-          />
-          <PrimaryButton
-            label="Open App Settings (Notifications)"
-            variant="secondary"
-            onPress={() => void openAppSettings('OnboardingScreen')}
-          />
-        </SectionCard>
-      ) : (
-        <SectionCard title="Required permissions">
-          <Text style={styles.body}>To use ScrollGuard on iOS, allow notifications in app settings.</Text>
-          <Text style={styles.note}>
-            iOS limits system-level usage tracking and app-blocking compared to Android.
-          </Text>
-          <PrimaryButton
-            label="Open App Settings"
-            variant="secondary"
-            onPress={() => void openAppSettings('OnboardingScreen')}
-          />
-        </SectionCard>
-      )}
+  React.useEffect(() => {
+    Animated.timing(progressValue, {
+      toValue: currentStepIndex,
+      duration: 220,
+      useNativeDriver: false,
+    }).start();
+  }, [currentStepIndex, progressValue]);
 
-      <View style={styles.stepRow}>
-        <View style={[styles.stepDot, styles.stepActive]} />
-        <View style={styles.stepDot} />
-        <View style={styles.stepDot} />
-      </View>
+  const handleContainerLayout = React.useCallback((event: LayoutChangeEvent): void => {
+    const width = event.nativeEvent.layout.width;
+    if (width <= 0) {
+      return;
+    }
 
-      <PrimaryButton
-        label="Continue to Permissions"
-        onPress={() => navigation.navigate('PermissionsSetupScreen')}
+    setPageWidth(previousWidth => {
+      if (Math.abs(previousWidth - width) < 1) {
+        return previousWidth;
+      }
+
+      return width;
+    });
+  }, []);
+
+  const scrollToStep = React.useCallback((stepIndex: number): void => {
+    if (!listRef.current) {
+      return;
+    }
+
+    listRef.current.scrollToIndex({
+      index: stepIndex,
+      animated: true,
+    });
+  }, []);
+
+  const handleNext = React.useCallback((): void => {
+    if (isLastStep) {
+      navigation.navigate('PermissionsSetupScreen');
+      return;
+    }
+
+    const nextIndex = currentStepIndex + 1;
+    setCurrentStepIndex(nextIndex);
+    scrollToStep(nextIndex);
+  }, [currentStepIndex, isLastStep, navigation, scrollToStep]);
+
+  const handleBack = React.useCallback((): void => {
+    if (isFirstStep) {
+      return;
+    }
+
+    const previousIndex = currentStepIndex - 1;
+    setCurrentStepIndex(previousIndex);
+    scrollToStep(previousIndex);
+  }, [currentStepIndex, isFirstStep, scrollToStep]);
+
+  const handleMomentumScrollEnd = React.useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>): void => {
+      if (pageWidth <= 0) {
+        return;
+      }
+
+      const offsetX = event.nativeEvent.contentOffset.x;
+      const nextIndex = Math.round(offsetX / pageWidth);
+      if (nextIndex !== currentStepIndex && nextIndex >= 0 && nextIndex < ONBOARDING_STEPS.length) {
+        setCurrentStepIndex(nextIndex);
+      }
+    },
+    [currentStepIndex, pageWidth],
+  );
+
+  const renderStepItem = React.useCallback(
+    ({ item }: { item: OnboardingStep }): React.JSX.Element => {
+      const StepComponent = item.Component;
+      return (
+        <View style={[styles.stepPage, pageWidth > 0 ? { width: pageWidth } : null]}>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.stepPageContent}
+            nestedScrollEnabled>
+            <AnimatedStepContent>
+              <StepComponent navigation={navigation as StepContentProps['navigation']} />
+            </AnimatedStepContent>
+          </ScrollView>
+        </View>
+      );
+    },
+    [navigation, pageWidth],
+  );
+
+  const keyExtractor = React.useCallback((item: OnboardingStep): string => item.key, []);
+
+  const getItemLayout = React.useCallback(
+    (_: ArrayLike<OnboardingStep> | null | undefined, index: number) => ({
+      length: pageWidth,
+      offset: pageWidth * index,
+      index,
+    }),
+    [pageWidth],
+  );
+
+  return (
+    <AppScreen title={currentStep.title} subtitle={currentStep.subtitle} noScroll>
+      <StepIndicator
+        stepKeys={ONBOARDING_STEPS.map(step => step.key)}
+        progressValue={progressValue}
       />
-      <PrimaryButton label="Continue as Guest" variant="secondary" onPress={() => navigation.navigate('PermissionsSetupScreen')} />
-      <PrimaryButton label="I already have an account" variant="ghost" onPress={() => navigation.navigate('LoginScreen')} />
+
+      <View style={styles.flatListContainer} onLayout={handleContainerLayout}>
+        <FlatList
+          ref={listRef}
+          data={ONBOARDING_STEPS}
+          keyExtractor={keyExtractor}
+          renderItem={renderStepItem}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          initialNumToRender={1}
+          maxToRenderPerBatch={2}
+          windowSize={3}
+          onMomentumScrollEnd={handleMomentumScrollEnd}
+          // Keep paging button-driven to avoid accidental horizontal swipes hiding permission content.
+          scrollEnabled={false}
+          getItemLayout={pageWidth > 0 ? getItemLayout : undefined}
+          extraData={pageWidth}
+        />
+      </View>
+
+      <View style={styles.actionsContainer}>
+        <View style={styles.primaryActionWrap}>
+          <PrimaryButton label="Continue" onPress={handleNext} />
+        </View>
+
+        <View style={styles.secondaryActionsWrap}>
+          {!isFirstStep ? <PrimaryButton label="Back" variant="ghost" onPress={handleBack} /> : null}
+          <PrimaryButton
+            label="Continue as Guest"
+            variant="ghost"
+            onPress={() => navigation.navigate('PermissionsSetupScreen')}
+          />
+          <PrimaryButton
+            label="I already have an account"
+            variant="ghost"
+            onPress={() => navigation.navigate('LoginScreen')}
+          />
+        </View>
+      </View>
     </AppScreen>
   );
 }
 
+export function OnboardingScreen(): React.JSX.Element {
+  return <OnboardingContainer />;
+}
+
 const styles = StyleSheet.create({
-  body: {
-    color: colors.textMuted,
-    fontSize: 15,
-    lineHeight: 22,
+  flatListContainer: {
+    width: '100%',
+    flex: 1,
+    minHeight: 280,
   },
-  bullet: {
-    fontSize: 15,
-    lineHeight: 20,
-    color: colors.text,
+  stepPage: {
+    width: '100%',
   },
-  note: {
-    fontSize: 13,
-    lineHeight: 18,
-    color: colors.textMuted,
+  stepPageContent: {
+    gap: 12,
+    paddingBottom: 20,
   },
-  heroPanel: {
-    position: 'relative',
-    backgroundColor: '#E7F9FD',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#BAECF5',
-    overflow: 'hidden',
+  animatedStepContent: {
+    gap: 12,
+  },
+  actionsContainer: {
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: '#E6EEF2',
     gap: 8,
   },
-  heroGlow: {
-    position: 'absolute',
-    width: 190,
-    height: 190,
-    borderRadius: 999,
-    backgroundColor: '#C8F3FB',
-    right: -65,
-    top: -85,
+  primaryActionWrap: {
+    marginTop: 0,
   },
-  heroTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: colors.text,
-    letterSpacing: -0.2,
-  },
-  heroCaption: {
-    fontSize: typography.body,
-    lineHeight: 20,
-    color: colors.textMuted,
-    maxWidth: '88%',
-  },
-  stepRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-    marginTop: 2,
-  },
-  stepDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 999,
-    backgroundColor: '#B6DCE4',
-  },
-  stepActive: {
-    width: 24,
-    backgroundColor: colors.primary,
+  secondaryActionsWrap: {
+    gap: 4,
+    marginTop: 0,
   },
 });
