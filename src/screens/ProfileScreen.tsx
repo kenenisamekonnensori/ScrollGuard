@@ -5,27 +5,34 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { MetricRow } from '../components/ui/MetricRow';
 import { PrimaryButton } from '../components/ui/PrimaryButton';
 import { SectionCard } from '../components/ui/SectionCard';
+import { useUsageStore } from '../store/usageStore';
 import { colors } from '../theme/tokens';
+import { BACKEND_COMING_SOON_MESSAGE } from '../utils/featureFlags';
+import { toMinutes } from '../utils/time';
 
 export function ProfileScreen(): React.JSX.Element {
   const navigation = useNavigation<any>();
+  const usageStats = useUsageStore(state => state.usageStats);
+  const videoCounts = useUsageStore(state => state.videoCounts);
+  const totalSeconds = Object.values(usageStats).reduce((total, value) => total + value, 0);
+  const totalVideos = Object.values(videoCounts).reduce((total, value) => total + value, 0);
 
   return (
     <AppScreen title="User Profile" subtitle="Account summary, plan details, and personal focus milestones.">
       <SectionCard>
         <View style={styles.avatar}>
-          <Text style={styles.initials}>KS</Text>
+          <Text style={styles.initials}>G</Text>
         </View>
-        <Text style={styles.name}>Kenenisa</Text>
-        <Text style={styles.email}>kenenisa@scrollguard.app</Text>
-        <Text style={styles.memberBadge}>Premium Member</Text>
+        <Text style={styles.name}>Guest User</Text>
+        <Text style={styles.email}>Local-only mode</Text>
+        <Text style={styles.memberBadge}>Backend coming soon</Text>
       </SectionCard>
 
       <SectionCard title="Progress">
-        <MetricRow label="Current streak" value="4 days" />
-        <MetricRow label="Avg daily time" value="36 min" />
-        <MetricRow label="Best week" value="-38% usage" />
-        <Text style={styles.progressHint}>Guard Score: 94 • Time Saved: 128h</Text>
+        <MetricRow label="Time tracked today" value={`${toMinutes(totalSeconds)} min`} />
+        <MetricRow label="Videos counted today" value={`${totalVideos}`} />
+        <MetricRow label="Current streak" value="Coming soon" />
+        <Text style={styles.progressHint}>{BACKEND_COMING_SOON_MESSAGE}</Text>
       </SectionCard>
 
       <SectionCard title="Subscription">
