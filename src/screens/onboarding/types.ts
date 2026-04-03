@@ -1,5 +1,7 @@
 export type StepContentProps = {
   navigation: any;
+  onNext?: () => void;
+  onSkip?: () => void;
 };
 
 export type OnboardingStep = {

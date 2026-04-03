@@ -18,20 +18,26 @@ export function SectionCard({ title, children }: SectionCardProps): React.JSX.El
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
+    backgroundColor: '#FFFFFF',
+    borderRadius: radii.xl,
     borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-    gap: spacing.sm,
-    ...shadows.soft,
+    borderColor: '#F0F4F8',
+    padding: spacing.lg,
+    gap: spacing.md,
+    shadowColor: '#0A2540',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    elevation: 2,
+    marginBottom: spacing.sm,
   },
   title: {
     fontSize: typography.titleMD,
-    fontWeight: '700',
-    color: colors.text,
+    fontWeight: '800',
+    color: '#0B1330',
+    letterSpacing: -0.3,
   },
   content: {
-    gap: spacing.sm,
+    gap: 3,
   },
 });

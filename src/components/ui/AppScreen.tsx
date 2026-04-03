@@ -8,13 +8,21 @@ type AppScreenProps = {
   subtitle?: string;
   children: React.ReactNode;
   noScroll?: boolean;
+  headerLeft?: React.ReactNode;
+  headerRight?: React.ReactNode;
 };
 
-export function AppScreen({ title, subtitle, children, noScroll }: AppScreenProps): React.JSX.Element {
+export function AppScreen({ title, subtitle, children, noScroll, headerLeft, headerRight }: AppScreenProps): React.JSX.Element {
   const content = (
-    <View style={styles.pageWrap}>
-      <View style={styles.content}>
-        <Text style={styles.title}>{title}</Text>
+    <View style={[styles.pageWrap, noScroll && styles.flexContent]}>
+      <View style={[styles.content, noScroll && styles.flexContent]}>
+        {(headerLeft || headerRight) && (
+          <View style={styles.headerRow}>
+            <View style={styles.headerLeft}>{headerLeft}</View>
+            <View style={styles.headerRight}>{headerRight}</View>
+          </View>
+        )}
+        {title ? <Text style={styles.title}>{title}</Text> : null}
         {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
         {children}
       </View>
@@ -40,6 +48,9 @@ const styles = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
   },
+  flexContent: {
+    flex: 1,
+  },
   content: {
     width: '100%',
     maxWidth: 520,
@@ -47,16 +58,32 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     gap: spacing.md,
   },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  headerLeft: {
+    flex: 1,
+    alignItems: 'flex-start',
+  },
+  headerRight: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
   title: {
-    fontSize: typography.titleLG,
+    fontSize: 28,
     fontWeight: '800',
-    color: colors.text,
-    letterSpacing: -0.3,
+    color: '#0B1330',
+    letterSpacing: -0.4,
+    lineHeight: 36,
   },
   subtitle: {
-    fontSize: 15,
-    color: colors.textMuted,
-    lineHeight: 22,
-    marginTop: -4,
+    fontSize: 16,
+    color: '#4D5F78',
+    lineHeight: 24,
+    marginTop: -2,
+    marginBottom: spacing.xs,
   },
 });

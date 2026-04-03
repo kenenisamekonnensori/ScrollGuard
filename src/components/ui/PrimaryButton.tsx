@@ -32,9 +32,10 @@ export function PrimaryButton({ label, onPress, variant = 'primary' }: PrimaryBu
 
 const styles = StyleSheet.create({
   button: {
-    borderRadius: radii.md,
-    minHeight: 52,
+    borderRadius: 999, // Pill shape for modern UI
+    minHeight: 56,     // Slightly taller for better touch target
     paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xl,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
@@ -42,30 +43,37 @@ const styles = StyleSheet.create({
   primary: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
   secondary: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
+    backgroundColor: '#F0F4F8',
+    borderColor: '#F0F4F8',
   },
   ghost: {
     backgroundColor: 'transparent',
     borderColor: 'transparent',
   },
   text: {
-    fontSize: 15,
-    fontWeight: '700',
-    letterSpacing: 0.1,
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 0.2,
   },
   primaryText: {
     color: colors.white,
   },
   secondaryText: {
-    color: colors.text,
+    color: '#0B1330',
   },
   ghostText: {
-    color: colors.primary,
+    color: '#4D5F78',
+    fontWeight: '700',
   },
   pressed: {
-    opacity: 0.88,
+    opacity: 0.85,
+    transform: [{ scale: 0.98 }],
   },
 });

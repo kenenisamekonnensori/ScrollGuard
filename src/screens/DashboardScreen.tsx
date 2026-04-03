@@ -55,7 +55,7 @@ export function DashboardScreen(): React.JSX.Element {
       : withinLimitPercentage >= 67
         ? 'Strong control with room to improve'
         : 'Usage is above limits for multiple apps';
-  const focusMeterWidth = `${Math.max(withinLimitPercentage, 4)}%`;
+  const focusMeterWidth = `${Math.max(withinLimitPercentage, 4)}%` as `${number}%`;
   const lastSyncLabel = lastSyncedAt
     ? new Date(lastSyncedAt).toLocaleTimeString([], {
         hour: '2-digit',
@@ -137,7 +137,7 @@ export function DashboardScreen(): React.JSX.Element {
                     styles.progressFill,
                     {
                       backgroundColor: APP_BAR_COLORS[index % APP_BAR_COLORS.length],
-                      width: `${Math.max((minutes / maxUsageMinutes) * 100, minutes > 0 ? 8 : 0)}%`,
+                      width: `${Math.max((minutes / maxUsageMinutes) * 100, minutes > 0 ? 8 : 0)}%` as `${number}%`,
                     },
                   ]}
                 />
