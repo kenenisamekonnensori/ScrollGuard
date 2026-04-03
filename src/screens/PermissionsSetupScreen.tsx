@@ -132,6 +132,13 @@ export function PermissionsSetupScreen(): React.JSX.Element {
     <AppScreen
       title="Permissions Setup"
       subtitle="Enable all required permissions so ScrollGuard can track usage and protect your limits.">
+      
+      <PrimaryButton
+        label="All Set - Continue to App"
+        variant="primary"
+        onPress={() => navigation.replace('MainTabs')}
+      />
+
       <SectionCard>
         {isAndroid ? (
           <View style={styles.row}>
@@ -247,11 +254,6 @@ export function PermissionsSetupScreen(): React.JSX.Element {
         <Text style={styles.footer}>Permission status checks are unavailable on this build.</Text>
       )}
 
-      <PrimaryButton
-        label="All Set"
-        variant="ghost"
-        onPress={() => navigation.replace('MainTabs')}
-      />
       {!allPermissionsEnabled && !isLoading ? (
         <Text style={styles.warning}>Some permissions are still off. Core tracking and blocking may not work fully.</Text>
       ) : null}

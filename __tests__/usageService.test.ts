@@ -7,12 +7,12 @@ jest.mock('../src/native/NativeBridgeService', () => ({
   getUsageStats: jest.fn(),
 }));
 
-const setUsageStatsMock = jest.fn();
+const mockSetUsageStats = jest.fn();
 
 jest.mock('../src/store/usageStore', () => ({
   useUsageStore: {
     getState: jest.fn(() => ({
-      setUsageStats: setUsageStatsMock,
+      setUsageStats: mockSetUsageStats,
     })),
   },
 }));
@@ -37,8 +37,8 @@ describe('UsageService.fetchTodayUsage', () => {
     expect(result[MONITORED_PACKAGES.instagram]).toBe(0);
     expect(result[MONITORED_PACKAGES.youtube]).toBe(0);
 
-    expect(setUsageStatsMock).toHaveBeenCalledTimes(1);
-    expect(setUsageStatsMock).toHaveBeenCalledWith(result);
+    expect(mockSetUsageStats).toHaveBeenCalledTimes(1);
+    expect(mockSetUsageStats).toHaveBeenCalledWith(result);
   });
 
   test('fills missing package entries with zero', async () => {

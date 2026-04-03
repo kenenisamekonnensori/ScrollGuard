@@ -1,82 +1,86 @@
 import React from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import { FeatureRow } from '../../components/onboarding/FeatureRow';
-import { PrimaryButton } from '../../components/ui/PrimaryButton';
-import { SectionCard } from '../../components/ui/SectionCard';
-import { colors } from '../../theme/tokens';
-import { openAndroidSettings, openAppSettings } from '../../utils/settingsLinks';
 import { StepContentProps } from './types';
 
 export function PermissionsScreen({ navigation: _navigation }: StepContentProps): React.JSX.Element {
   return (
-    <>
+    <View style={styles.container}>
       {Platform.OS === 'android' ? (
         <>
-          <SectionCard title="Let&apos;s set up your focus shield">
-            <Text style={styles.body}>We need this to protect your focus.</Text>
-          </SectionCard>
-
-          <SectionCard title="Usage Access">
-            <FeatureRow icon="📈" title="See how much time you spend in apps." />
-            <View style={styles.permissionButtonWrap}>
-              <PrimaryButton
-                label="Open Usage Access Settings"
-                variant="secondary"
-                onPress={() => void openAndroidSettings('android.settings.USAGE_ACCESS_SETTINGS', 'OnboardingScreen')}
-              />
+          <Text style={styles.sectionTitle}>Why we need access</Text>
+          <Text style={styles.body}>To effectively protect your time, ScrollGuard runs quietly in the background and relies on these core systems:</Text>
+          
+          <View style={styles.gap}>
+            <View style={styles.featureBlock}>
+              <FeatureRow icon="📈" title="Usage Access" />
+              <Text style={styles.description}>Tracks the exact minutes you spend in distracting apps.</Text>
             </View>
-          </SectionCard>
 
-          <SectionCard title="Accessibility">
-            <FeatureRow icon="👁" title="Detect active scrolling apps in real time." />
-            <View style={styles.permissionButtonWrap}>
-              <PrimaryButton
-                label="Open Accessibility Settings"
-                variant="secondary"
-                onPress={() => void openAndroidSettings('android.settings.ACCESSIBILITY_SETTINGS', 'OnboardingScreen')}
-              />
+            <View >
+              <FeatureRow icon="👁" title="Accessibility" />
+              <Text style={styles.description}>Safely recognizes when you open a blocked app to stop you.</Text>
             </View>
-          </SectionCard>
 
-          <SectionCard title="Notifications">
-            <FeatureRow icon="🔔" title="Send reminders before you pass your limits." />
-            <View style={styles.permissionButtonWrap}>
-              <PrimaryButton
-                label="Open App Settings (Notifications)"
-                variant="secondary"
-                onPress={() => void openAppSettings('OnboardingScreen')}
-              />
+            <View style={styles.featureBlock}>
+              <FeatureRow icon="🔔" title="Notifications" />
+              <Text style={styles.description}>Sends you gentle reminders right before your limit runs out.</Text>
             </View>
-          </SectionCard>
+          </View>
         </>
       ) : (
-        <SectionCard title="Let&apos;s set up your focus shield">
-          <Text style={styles.body}>We need this to protect your focus.</Text>
-          <Text style={styles.body}>Allow notifications to get gentle stop reminders.</Text>
-          <Text style={styles.note}>iOS allows fewer controls than Android today.</Text>
-          <PrimaryButton
-            label="Open App Settings"
-            variant="secondary"
-            onPress={() => void openAppSettings('OnboardingScreen')}
-          />
-        </SectionCard>
+        <>
+          <Text style={styles.sectionTitle}>Why we need access</Text>
+          <Text style={styles.body}>To effectively protect your time, ScrollGuard needs to send you alerts.</Text>
+          
+          <View style={styles.gap}>
+            <View style={styles.featureBlock}>
+              <FeatureRow icon="🔔" title="Notifications" />
+              <Text style={styles.description}>Sends you gentle reminders before your limit runs out.</Text>
+            </View>
+          </View>
+          <Text style={styles.note}>Note: iOS allows fewer background controls than Android.</Text>
+        </>
       )}
-    </>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  body: {
-    color: colors.textMuted,
+  container: {
+    paddingTop: 4,
+  },
+  sectionTitle: {
     fontSize: 15,
-    lineHeight: 22,
+    fontWeight: '800',
+    color: '#0B1330',
+    marginBottom: 8,
+    letterSpacing: -0.3,
+  },
+  body: {
+    color: '#4D5F78',
+    fontSize: 14,
+    lineHeight: 24,
+    marginBottom: 8,
+  },
+  gap: {
+    gap: 10,
+    marginTop: 12,
+  },
+  featureBlock: {
+    gap: 2,
+  },
+  description: {
+    color: '#8A9CB3',
+    fontSize: 10,
+    lineHeight: 12,
+    marginLeft: 54, 
   },
   note: {
-    fontSize: 13,
-    lineHeight: 18,
-    color: colors.textMuted,
-  },
-  permissionButtonWrap: {
-    marginTop: 4,
+    fontSize: 8,
+    lineHeight: 12,
+    color: '#8A9CB3',
+    marginTop: 32,
+    fontStyle: 'italic',
   },
 });

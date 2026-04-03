@@ -54,7 +54,7 @@ jest.mock('react-native-mmkv', () => {
 
 describe('usageStore daily history helpers', () => {
   test('retains at most 7 days and keeps newest snapshots', () => {
-    const history = [];
+    const history: any[] = [];
 
     for (let day = 1; day <= 8; day += 1) {
       const dateKey = `2026-03-${`${day}`.padStart(2, '0')}`;

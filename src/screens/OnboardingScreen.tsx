@@ -11,20 +11,23 @@ import {
   View,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StepIndicator } from '../components/onboarding/StepIndicator';
+import { Pressable, Text } from 'react-native';
 import { AppScreen } from '../components/ui/AppScreen';
 import { PrimaryButton } from '../components/ui/PrimaryButton';
 import { AwarenessScreen } from './onboarding/AwarenessScreen';
 import { HookScreen } from './onboarding/HookScreen';
 import { PermissionsScreen } from './onboarding/PermissionsScreen';
 import { StepContentProps, OnboardingStep } from './onboarding/types';
-import { ValueScreen } from './onboarding/ValueScreen';
+import FocusValueScreen from './onboarding/FocusValueScreen';
 
 type AnimatedStepContentProps = {
   children: React.ReactNode;
+  style?: any;
 };
 
-function AnimatedStepContent({ children }: AnimatedStepContentProps): React.JSX.Element {
+function AnimatedStepContent({ children, style }: AnimatedStepContentProps): React.JSX.Element {
   const opacity = React.useRef(new Animated.Value(0)).current;
   const translateY = React.useRef(new Animated.Value(10)).current;
 
@@ -49,6 +52,7 @@ function AnimatedStepContent({ children }: AnimatedStepContentProps): React.JSX.
     <Animated.View
       style={[
         styles.animatedStepContent,
+        style,
         {
           opacity,
           transform: [{ translateY }],
@@ -59,35 +63,37 @@ function AnimatedStepContent({ children }: AnimatedStepContentProps): React.JSX.
   );
 }
 
+const HOOK_STEP: OnboardingStep = {
+  key: 'hook',
+  title: '',
+  subtitle: '',
+  Component: HookScreen,
+};
+
 const ONBOARDING_STEPS: OnboardingStep[] = [
-  {
-    key: 'hook',
-    title: 'Take Your Time Back',
-    subtitle: 'Step 1 of 4 - Feel the cost',
-    Component: HookScreen,
-  },
   {
     key: 'awareness',
     title: 'Build Awareness',
-    subtitle: 'Step 2 of 4 - See your patterns',
+    subtitle: 'Step 1 of 3 - See your patterns',
     Component: AwarenessScreen,
   },
   {
     key: 'value',
     title: 'Protect Your Focus',
-    subtitle: 'Step 3 of 4 - Simple daily wins',
-    Component: ValueScreen,
+    subtitle: 'Step 2 of 3 - Simple daily wins',
+    Component: FocusValueScreen,
   },
   {
     key: 'permissions',
     title: 'Turn Protection On',
-    subtitle: 'Step 4 of 4 - Enable permissions',
+    subtitle: 'Step 3 of 3 - Enable permissions',
     Component: PermissionsScreen,
   },
 ];
 
 export function OnboardingContainer(): React.JSX.Element {
   const navigation = useNavigation<any>();
+  const [showHookScreen, setShowHookScreen] = React.useState(true);
   const [currentStepIndex, setCurrentStepIndex] = React.useState(0);
   const [pageWidth, setPageWidth] = React.useState(0);
   const listRef = React.useRef<FlatList<OnboardingStep>>(null);
@@ -152,6 +158,11 @@ export function OnboardingContainer(): React.JSX.Element {
     scrollToStep(previousIndex);
   }, [currentStepIndex, isFirstStep, scrollToStep]);
 
+  const handleStartOnboarding = React.useCallback((): void => {
+    setCurrentStepIndex(0);
+    setShowHookScreen(false);
+  }, []);
+
   const handleMomentumScrollEnd = React.useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>): void => {
       if (pageWidth <= 0) {
@@ -172,18 +183,19 @@ export function OnboardingContainer(): React.JSX.Element {
       const StepComponent = item.Component;
       return (
         <View style={[styles.stepPage, pageWidth > 0 ? { width: pageWidth } : null]}>
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.stepPageContent}
-            nestedScrollEnabled>
+          <View style={styles.stepPageContent}>
             <AnimatedStepContent>
-              <StepComponent navigation={navigation as StepContentProps['navigation']} />
+              <StepComponent
+                navigation={navigation as StepContentProps['navigation']}
+                onNext={handleNext}
+                onSkip={() => navigation.navigate('PermissionsSetupScreen')}
+              />
             </AnimatedStepContent>
-          </ScrollView>
+          </View>
         </View>
       );
     },
-    [navigation, pageWidth],
+    [handleNext, navigation, pageWidth],
   );
 
   const keyExtractor = React.useCallback((item: OnboardingStep): string => item.key, []);
@@ -197,8 +209,42 @@ export function OnboardingContainer(): React.JSX.Element {
     [pageWidth],
   );
 
+  const insets = useSafeAreaInsets();
+
+  if (showHookScreen) {
+    const HookComponent = HOOK_STEP.Component;
+
+    return (
+      <View style={styles.hookStepContainer}>
+        <AnimatedStepContent style={{ flex: 1 }}>
+          <HookComponent
+            navigation={navigation as StepContentProps['navigation']}
+            onNext={handleStartOnboarding}
+            onSkip={() => navigation.navigate('PermissionsSetupScreen')}
+          />
+        </AnimatedStepContent>
+      </View>
+    );
+  }
+
   return (
-    <AppScreen title={currentStep.title} subtitle={currentStep.subtitle} noScroll>
+    <AppScreen 
+      title={currentStep.title} 
+      subtitle={currentStep.subtitle} 
+      noScroll
+      headerLeft={
+        !isFirstStep ? (
+          <Pressable onPress={handleBack} hitSlop={10} style={styles.headerIconButton}>
+            <View style={styles.arrowLeft} />
+          </Pressable>
+        ) : null
+      }
+      headerRight={
+        <Pressable onPress={handleNext} hitSlop={10} style={styles.headerIconButton}>
+          <View style={styles.arrowRight} />
+        </Pressable>
+      }
+    >
       <StepIndicator
         stepKeys={ONBOARDING_STEPS.map(step => step.key)}
         progressValue={progressValue}
@@ -217,27 +263,21 @@ export function OnboardingContainer(): React.JSX.Element {
           maxToRenderPerBatch={2}
           windowSize={3}
           onMomentumScrollEnd={handleMomentumScrollEnd}
-          // Keep paging button-driven to avoid accidental horizontal swipes hiding permission content.
-          scrollEnabled={false}
+          scrollEnabled
           getItemLayout={pageWidth > 0 ? getItemLayout : undefined}
           extraData={pageWidth}
         />
       </View>
 
-      <View style={styles.actionsContainer}>
-        <View style={styles.primaryActionWrap}>
-          <PrimaryButton label="Continue" onPress={handleNext} />
-        </View>
-
+      <View style={[styles.actionsContainer, { paddingBottom: Math.max(insets.bottom, 20) }]}>
         <View style={styles.secondaryActionsWrap}>
-          {!isFirstStep ? <PrimaryButton label="Back" variant="ghost" onPress={handleBack} /> : null}
           <PrimaryButton
-            label="Continue as Guest"
-            variant="ghost"
+            label="Continue"
+            variant="primary"
             onPress={() => navigation.navigate('PermissionsSetupScreen')}
           />
           <PrimaryButton
-            label="I already have an account"
+            label="Login"
             variant="ghost"
             onPress={() => navigation.navigate('LoginScreen')}
           />
@@ -260,24 +300,50 @@ const styles = StyleSheet.create({
   stepPage: {
     width: '100%',
   },
+  hookStepContainer: {
+    flex: 1,
+    minHeight: 0,
+  },
   stepPageContent: {
-    gap: 12,
+    gap: 6,
     paddingBottom: 20,
   },
   animatedStepContent: {
-    gap: 12,
+    gap: 6,
   },
   actionsContainer: {
-    paddingTop: 6,
-    borderTopWidth: 1,
-    borderTopColor: '#E6EEF2',
-    gap: 8,
+    paddingTop: 16,
+    gap: 6,
   },
   primaryActionWrap: {
     marginTop: 0,
   },
   secondaryActionsWrap: {
-    gap: 4,
+    flexDirection: 'column',
+    gap: 1,
     marginTop: 0,
+    marginBottom: 0,
+  },
+  headerIconButton: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  arrowLeft: {
+    width: 14,
+    height: 14,
+    borderTopWidth: 2.5,
+    borderLeftWidth: 2.5,
+    borderColor: '#0B1330',
+    transform: [{ rotate: '-45deg' }, { translateX: 2 }, { translateY: 2 }],
+  },
+  arrowRight: {
+    width: 14,
+    height: 14,
+    borderTopWidth: 2.5,
+    borderRightWidth: 2.5,
+    borderColor: '#0B1330',
+    transform: [{ rotate: '45deg' }, { translateX: -2 }, { translateY: 2 }],
   },
 });
