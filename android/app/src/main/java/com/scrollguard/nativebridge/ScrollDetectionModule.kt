@@ -31,10 +31,22 @@ class ScrollDetectionModule(private val reactContext: ReactApplicationContext) :
 
   @ReactMethod
   fun startScrollDetection() {
+    BlockingForegroundService.start(reactContext)
   }
 
   @ReactMethod
   fun stopScrollDetection() {
+    BlockingForegroundService.stop(reactContext)
+  }
+
+  @ReactMethod
+  fun startForegroundProtectionService() {
+    BlockingForegroundService.start(reactContext)
+  }
+
+  @ReactMethod
+  fun stopForegroundProtectionService() {
+    BlockingForegroundService.stop(reactContext)
   }
 
   @ReactMethod

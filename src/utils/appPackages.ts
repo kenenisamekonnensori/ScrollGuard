@@ -4,11 +4,31 @@ export const MONITORED_PACKAGES = {
   youtube: 'com.google.android.youtube',
 } as const;
 
-export const MONITORED_PACKAGE_LIST = Object.values(MONITORED_PACKAGES);
+export const MONITORED_PACKAGE_GROUPS = {
+  tiktok: [
+    MONITORED_PACKAGES.tiktok,
+    'com.zhiliaoapp.musically.go',
+  ],
+  instagram: [
+    MONITORED_PACKAGES.instagram,
+    'com.instagram.lite',
+  ],
+  youtube: [
+    MONITORED_PACKAGES.youtube,
+  ],
+} as const;
+
+export type MonitoredAppFamily = keyof typeof MONITORED_PACKAGE_GROUPS;
+
+export const MONITORED_PACKAGE_LIST = Array.from(
+  new Set(Object.values(MONITORED_PACKAGE_GROUPS).flat()),
+);
 
 export const PACKAGE_LABELS: Record<string, string> = {
   [MONITORED_PACKAGES.tiktok]: 'TikTok',
+  'com.zhiliaoapp.musically.go': 'TikTok Lite',
   [MONITORED_PACKAGES.instagram]: 'Instagram',
+  'com.instagram.lite': 'Instagram Lite',
   [MONITORED_PACKAGES.youtube]: 'YouTube',
 };
 
@@ -17,7 +37,9 @@ export const PACKAGE_LABELS: Record<string, string> = {
  */
 export const PACKAGE_ICONS: Record<string, string> = {
   [MONITORED_PACKAGES.tiktok]: '▶️',
+  'com.zhiliaoapp.musically.go': '▶️',
   [MONITORED_PACKAGES.instagram]: '📷',
+  'com.instagram.lite': '📷',
   [MONITORED_PACKAGES.youtube]: '📺',
 };
 
@@ -31,6 +53,14 @@ export type LimitSettingKey =
  */
 export const LIMIT_SETTING_KEYS: Record<string, LimitSettingKey> = {
   [MONITORED_PACKAGES.tiktok]: 'tiktokLimitMinutes',
+  'com.zhiliaoapp.musically.go': 'tiktokLimitMinutes',
   [MONITORED_PACKAGES.instagram]: 'instagramLimitMinutes',
+  'com.instagram.lite': 'instagramLimitMinutes',
   [MONITORED_PACKAGES.youtube]: 'youtubeLimitMinutes',
+};
+
+export const FAMILY_LIMIT_KEYS: Record<MonitoredAppFamily, LimitSettingKey> = {
+  tiktok: 'tiktokLimitMinutes',
+  instagram: 'instagramLimitMinutes',
+  youtube: 'youtubeLimitMinutes',
 };

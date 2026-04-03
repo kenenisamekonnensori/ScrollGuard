@@ -21,6 +21,8 @@ type AppUsageModuleContract = {
 type ScrollDetectionModuleContract = {
   startScrollDetection?: () => void;
   stopScrollDetection?: () => void;
+  startForegroundProtectionService?: () => void;
+  stopForegroundProtectionService?: () => void;
   isAccessibilityServiceEnabled?: () => Promise<boolean>;
 };
 
@@ -187,6 +189,20 @@ export function startScrollDetection(): void {
  */
 export function stopScrollDetection(): void {
   ScrollDetectionModule?.stopScrollDetection?.();
+}
+
+/**
+ * Starts native foreground service that keeps blocker protection alive in background.
+ */
+export function startForegroundProtectionService(): void {
+  ScrollDetectionModule?.startForegroundProtectionService?.();
+}
+
+/**
+ * Stops native foreground protection service.
+ */
+export function stopForegroundProtectionService(): void {
+  ScrollDetectionModule?.stopForegroundProtectionService?.();
 }
 
 /**

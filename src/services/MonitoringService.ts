@@ -3,6 +3,10 @@ import { evaluateUsageLimits } from '../features/limits/limitEngine';
 import { fetchTodayUsage } from './UsageService';
 import { scrollService } from './ScrollService';
 import { useUsageStore } from '../store/usageStore';
+import {
+  startForegroundProtectionService,
+  stopForegroundProtectionService,
+} from '../native/NativeBridgeService';
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -39,6 +43,7 @@ export async function startMonitoring(): Promise<void> {
 
   isMonitoring = true;
 
+  startForegroundProtectionService();
   scrollService.startListening();
 
   await refreshMonitoringNow();
@@ -64,6 +69,7 @@ export function stopMonitoring(): void {
     usageInterval = null;
   }
 
+  stopForegroundProtectionService();
   scrollService.stopListening();
 }
 
