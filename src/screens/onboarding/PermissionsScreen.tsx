@@ -17,7 +17,7 @@ export function PermissionsScreen({ navigation: _navigation }: StepContentProps)
               <Text style={styles.description}>Tracks the exact minutes you spend in distracting apps.</Text>
             </View>
 
-            <View >
+            <View style={styles.featureBlock}>
               <FeatureRow icon="👁" title="Accessibility" />
               <Text style={styles.description}>Safely recognizes when you open a blocked app to stop you.</Text>
             </View>

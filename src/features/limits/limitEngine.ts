@@ -2,32 +2,38 @@ import { blockApp } from '../blocking/blockingController';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useUsageStore } from '../../store/usageStore';
 import { sendLimitReachedNotification } from '../../services/NotificationService';
-import { MONITORED_PACKAGES, PACKAGE_LABELS } from '../../utils/appPackages';
+import {
+  FAMILY_LIMIT_KEYS,
+  MONITORED_PACKAGE_GROUPS,
+  PACKAGE_LABELS,
+  MonitoredAppFamily,
+} from '../../utils/appPackages';
 
 type MonitoredAppConfig = {
-  packageName: string;
+  family: MonitoredAppFamily;
+  packageNames: readonly string[];
   appName: string;
-  settingKey:
-    | 'tiktokLimitMinutes'
-    | 'instagramLimitMinutes'
-    | 'youtubeLimitMinutes';
+  settingKey: (typeof FAMILY_LIMIT_KEYS)[MonitoredAppFamily];
 };
 
 const MONITORED_APPS: MonitoredAppConfig[] = [
   {
-    packageName: MONITORED_PACKAGES.tiktok,
-    appName: PACKAGE_LABELS[MONITORED_PACKAGES.tiktok],
-    settingKey: 'tiktokLimitMinutes',
+    family: 'tiktok',
+    packageNames: MONITORED_PACKAGE_GROUPS.tiktok,
+    appName: PACKAGE_LABELS[MONITORED_PACKAGE_GROUPS.tiktok[0]],
+    settingKey: FAMILY_LIMIT_KEYS.tiktok,
   },
   {
-    packageName: MONITORED_PACKAGES.instagram,
-    appName: PACKAGE_LABELS[MONITORED_PACKAGES.instagram],
-    settingKey: 'instagramLimitMinutes',
+    family: 'instagram',
+    packageNames: MONITORED_PACKAGE_GROUPS.instagram,
+    appName: PACKAGE_LABELS[MONITORED_PACKAGE_GROUPS.instagram[0]],
+    settingKey: FAMILY_LIMIT_KEYS.instagram,
   },
   {
-    packageName: MONITORED_PACKAGES.youtube,
-    appName: PACKAGE_LABELS[MONITORED_PACKAGES.youtube],
-    settingKey: 'youtubeLimitMinutes',
+    family: 'youtube',
+    packageNames: MONITORED_PACKAGE_GROUPS.youtube,
+    appName: PACKAGE_LABELS[MONITORED_PACKAGE_GROUPS.youtube[0]],
+    settingKey: FAMILY_LIMIT_KEYS.youtube,
   },
 ];
 
@@ -40,12 +46,16 @@ export async function evaluateUsageLimits(): Promise<void> {
   const { userSettings } = useSettingsStore.getState();
 
   for (const app of MONITORED_APPS) {
-    const usageSeconds = usageStats[app.packageName] ?? 0;
+    const usageSeconds = app.packageNames.reduce((total, packageName) => {
+      return total + (usageStats[packageName] ?? 0);
+    }, 0);
     const usageMinutes = usageSeconds / 60;
     const limitMinutes = userSettings[app.settingKey];
 
     if (usageMinutes > limitMinutes) {
-      await blockApp(app.packageName);
+      for (const packageName of app.packageNames) {
+        await blockApp(packageName);
+      }
       sendLimitReachedNotification(app.appName);
     }
   }

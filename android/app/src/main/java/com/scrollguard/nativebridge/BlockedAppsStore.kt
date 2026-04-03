@@ -1,8 +1,11 @@
 package com.scrollguard.nativebridge
 
 import android.content.Context
+import android.util.Log
+import com.scrollguard.BuildConfig
 
 object BlockedAppsStore {
+  private const val TAG = "ScrollGuardBlocker"
   private const val PREFS_NAME = "scrollguard_blocked_apps"
   private const val PREFIX = "blocked_"
 
@@ -14,10 +17,16 @@ object BlockedAppsStore {
     val durationMs = durationMinutes.coerceAtLeast(0) * 60_000L
     val lockedUntil = now + durationMs
     prefs(context).edit().putLong(PREFIX + packageName, lockedUntil).apply()
+    if (BuildConfig.DEBUG) {
+      Log.d(TAG, "Block stored package=$packageName durationMinutes=$durationMinutes lockedUntil=$lockedUntil")
+    }
   }
 
   fun unblockApp(context: Context, packageName: String) {
     prefs(context).edit().remove(PREFIX + packageName).apply()
+    if (BuildConfig.DEBUG) {
+      Log.d(TAG, "Block removed package=$packageName")
+    }
   }
 
   fun getLockedUntil(context: Context, packageName: String): Long? {
@@ -29,6 +38,9 @@ object BlockedAppsStore {
 
     if (stored <= System.currentTimeMillis()) {
       prefs(context).edit().remove(key).apply()
+      if (BuildConfig.DEBUG) {
+        Log.d(TAG, "Expired block cleared package=$packageName")
+      }
       return null
     }
 
