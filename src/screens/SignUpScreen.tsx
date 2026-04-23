@@ -10,6 +10,7 @@ import {
   BACKEND_COMING_SOON_MESSAGE,
   IS_BACKEND_READY,
 } from '../utils/featureFlags';
+import { resolveProtectedEntryRoute } from '../utils/appFlow';
 
 export function SignUpScreen(): React.JSX.Element {
   const navigation = useNavigation<any>();
@@ -21,6 +22,18 @@ export function SignUpScreen(): React.JSX.Element {
 
     navigation.replace('MainTabs');
   };
+
+  const handleContinueAsGuest = React.useCallback((): void => {
+    resolveProtectedEntryRoute()
+      .then(routeName => {
+        navigation.replace(routeName);
+      })
+      .catch(error => {
+        if (__DEV__) {
+          console.warn('[SignUpScreen] Failed to resolve guest route.', error);
+        }
+      });
+  }, [navigation]);
 
   return (
     <AppScreen title="Create Account" subtitle="Account sync is coming soon. You can use Guest Mode today.">
@@ -38,7 +51,7 @@ export function SignUpScreen(): React.JSX.Element {
         <TextInput placeholder="Create password" placeholderTextColor="#8B98AC" secureTextEntry style={styles.input} />
       </SectionCard>
 
-      <PrimaryButton label="Continue as Guest" onPress={() => navigation.replace('MainTabs')} />
+      <PrimaryButton label="Continue as Guest" onPress={handleContinueAsGuest} />
       <PrimaryButton label="Create Account (Coming soon)" variant="secondary" onPress={handleBackendSignUp} />
       <PrimaryButton label="Continue with Google (Coming soon)" variant="secondary" onPress={handleBackendSignUp} />
       <PrimaryButton label="Already have an account? Sign in" variant="ghost" onPress={() => navigation.navigate('LoginScreen')} />

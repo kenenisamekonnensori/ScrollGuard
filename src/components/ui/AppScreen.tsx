@@ -1,7 +1,7 @@
 import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Screen } from '../Screen';
-import { colors, spacing, typography } from '../../theme/tokens';
+import { colors, spacing } from '../../theme/tokens';
 
 type AppScreenProps = {
   title: string;
@@ -12,7 +12,14 @@ type AppScreenProps = {
   headerRight?: React.ReactNode;
 };
 
-export function AppScreen({ title, subtitle, children, noScroll, headerLeft, headerRight }: AppScreenProps): React.JSX.Element {
+export function AppScreen({
+  title,
+  subtitle,
+  children,
+  noScroll,
+  headerLeft,
+  headerRight,
+}: AppScreenProps): React.JSX.Element {
   const content = (
     <View style={[styles.pageWrap, noScroll && styles.flexContent]}>
       <View style={[styles.content, noScroll && styles.flexContent]}>
@@ -31,7 +38,11 @@ export function AppScreen({ title, subtitle, children, noScroll, headerLeft, hea
 
   return (
     <Screen style={styles.safeArea}>
-      {noScroll ? content : <ScrollView contentContainerStyle={styles.scrollContainer}>{content}</ScrollView>}
+      {noScroll ? (
+        content
+      ) : (
+        <ScrollView contentContainerStyle={styles.scrollContainer}>{content}</ScrollView>
+      )}
     </Screen>
   );
 }

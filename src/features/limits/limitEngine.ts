@@ -1,4 +1,5 @@
 import { blockApp } from '../blocking/blockingController';
+import { isAppBlocked } from '../blocking/blockingController';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useUsageStore } from '../../store/usageStore';
 import { sendLimitReachedNotification } from '../../services/NotificationService';
@@ -46,17 +47,23 @@ export async function evaluateUsageLimits(): Promise<void> {
   const { userSettings } = useSettingsStore.getState();
 
   for (const app of MONITORED_APPS) {
-    const usageSeconds = app.packageNames.reduce((total, packageName) => {
+    const canonicalPackage = app.packageNames[0];
+    const usageSeconds = usageStats[canonicalPackage] ?? app.packageNames.reduce((total, packageName) => {
       return total + (usageStats[packageName] ?? 0);
     }, 0);
     const usageMinutes = usageSeconds / 60;
     const limitMinutes = userSettings[app.settingKey];
 
     if (usageMinutes > limitMinutes) {
-      for (const packageName of app.packageNames) {
+      const packagesToBlock = app.packageNames.filter(packageName => !isAppBlocked(packageName));
+
+      for (const packageName of packagesToBlock) {
         await blockApp(packageName);
       }
-      sendLimitReachedNotification(app.appName);
+
+      if (packagesToBlock.length > 0) {
+        sendLimitReachedNotification(app.appName);
+      }
     }
   }
 }

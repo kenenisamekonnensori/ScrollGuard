@@ -6,14 +6,13 @@ import {
   LayoutChangeEvent,
   NativeScrollEvent,
   NativeSyntheticEvent,
-  ScrollView,
+  Pressable,
   StyleSheet,
   View,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StepIndicator } from '../components/onboarding/StepIndicator';
-import { Pressable, Text } from 'react-native';
 import { AppScreen } from '../components/ui/AppScreen';
 import { PrimaryButton } from '../components/ui/PrimaryButton';
 import { AwarenessScreen } from './onboarding/AwarenessScreen';
@@ -21,6 +20,7 @@ import { HookScreen } from './onboarding/HookScreen';
 import { PermissionsScreen } from './onboarding/PermissionsScreen';
 import { StepContentProps, OnboardingStep } from './onboarding/types';
 import FocusValueScreen from './onboarding/FocusValueScreen';
+import { setOnboardingCompleted } from '../utils/appFlow';
 
 type AnimatedStepContentProps = {
   children: React.ReactNode;
@@ -91,6 +91,8 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
   },
 ];
 
+const FLEX_ONE_STYLE = { flex: 1 };
+
 export function OnboardingContainer(): React.JSX.Element {
   const navigation = useNavigation<any>();
   const [showHookScreen, setShowHookScreen] = React.useState(true);
@@ -102,6 +104,20 @@ export function OnboardingContainer(): React.JSX.Element {
   const isFirstStep = currentStepIndex === 0;
   const isLastStep = currentStepIndex === ONBOARDING_STEPS.length - 1;
   const currentStep = ONBOARDING_STEPS[currentStepIndex];
+
+  const completeOnboarding = React.useCallback((): void => {
+    setOnboardingCompleted(true);
+  }, []);
+
+  const navigateToPermissions = React.useCallback((): void => {
+    completeOnboarding();
+    navigation.navigate('PermissionsSetupScreen');
+  }, [completeOnboarding, navigation]);
+
+  const navigateToLogin = React.useCallback((): void => {
+    completeOnboarding();
+    navigation.navigate('LoginScreen');
+  }, [completeOnboarding, navigation]);
 
   React.useEffect(() => {
     Animated.timing(progressValue, {
@@ -139,14 +155,14 @@ export function OnboardingContainer(): React.JSX.Element {
 
   const handleNext = React.useCallback((): void => {
     if (isLastStep) {
-      navigation.navigate('PermissionsSetupScreen');
+      navigateToPermissions();
       return;
     }
 
     const nextIndex = currentStepIndex + 1;
     setCurrentStepIndex(nextIndex);
     scrollToStep(nextIndex);
-  }, [currentStepIndex, isLastStep, navigation, scrollToStep]);
+  }, [currentStepIndex, isLastStep, navigateToPermissions, scrollToStep]);
 
   const handleBack = React.useCallback((): void => {
     if (isFirstStep) {
@@ -188,14 +204,14 @@ export function OnboardingContainer(): React.JSX.Element {
               <StepComponent
                 navigation={navigation as StepContentProps['navigation']}
                 onNext={handleNext}
-                onSkip={() => navigation.navigate('PermissionsSetupScreen')}
+                onSkip={navigateToPermissions}
               />
             </AnimatedStepContent>
           </View>
         </View>
       );
     },
-    [handleNext, navigation, pageWidth],
+    [handleNext, navigateToPermissions, navigation, pageWidth],
   );
 
   const keyExtractor = React.useCallback((item: OnboardingStep): string => item.key, []);
@@ -216,11 +232,11 @@ export function OnboardingContainer(): React.JSX.Element {
 
     return (
       <View style={styles.hookStepContainer}>
-        <AnimatedStepContent style={{ flex: 1 }}>
+        <AnimatedStepContent style={FLEX_ONE_STYLE}>
           <HookComponent
             navigation={navigation as StepContentProps['navigation']}
             onNext={handleStartOnboarding}
-            onSkip={() => navigation.navigate('PermissionsSetupScreen')}
+            onSkip={navigateToPermissions}
           />
         </AnimatedStepContent>
       </View>
@@ -228,9 +244,9 @@ export function OnboardingContainer(): React.JSX.Element {
   }
 
   return (
-    <AppScreen 
-      title={currentStep.title} 
-      subtitle={currentStep.subtitle} 
+    <AppScreen
+      title={currentStep.title}
+      subtitle={currentStep.subtitle}
       noScroll
       headerLeft={
         !isFirstStep ? (
@@ -274,12 +290,12 @@ export function OnboardingContainer(): React.JSX.Element {
           <PrimaryButton
             label="Continue"
             variant="primary"
-            onPress={() => navigation.navigate('PermissionsSetupScreen')}
+            onPress={navigateToPermissions}
           />
           <PrimaryButton
             label="Login"
             variant="ghost"
-            onPress={() => navigation.navigate('LoginScreen')}
+            onPress={navigateToLogin}
           />
         </View>
       </View>
@@ -314,9 +330,6 @@ const styles = StyleSheet.create({
   actionsContainer: {
     paddingTop: 16,
     gap: 6,
-  },
-  primaryActionWrap: {
-    marginTop: 0,
   },
   secondaryActionsWrap: {
     flexDirection: 'column',

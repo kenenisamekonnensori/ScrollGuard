@@ -46,6 +46,23 @@ type PushNotificationManagerIOSContract = {
   checkPermissions?: (callback: (permissions: IOSNotificationPermissions) => void) => void;
 };
 
+export type PermissionStatusSupport = {
+  usageAccess: boolean;
+  accessibility: boolean;
+  notifications: boolean;
+};
+
+export type PermissionStatusSnapshot = {
+  support: PermissionStatusSupport;
+  usageAccess: boolean;
+  accessibility: boolean;
+  notifications: boolean;
+  totalRequiredPermissions: number;
+  completedPermissionsCount: number;
+  completionPercent: number;
+  allRequiredPermissionsEnabled: boolean;
+};
+
 const { AppUsageModule, ScrollDetectionModule, AppBlockingModule } =
   NativeModules as {
     AppUsageModule?: AppUsageModuleContract;
@@ -60,11 +77,7 @@ const USAGE_ACCESS_FALLBACK_CACHE_MS = 30_000;
  * Returns permission-status capability checks at call-time.
  * This avoids stale false negatives that can happen when native modules are initialized after import time.
  */
-export function getPermissionStatusSupport(): {
-  usageAccess: boolean;
-  accessibility: boolean;
-  notifications: boolean;
-} {
+export function getPermissionStatusSupport(): PermissionStatusSupport {
   const appUsageModule = NativeModules.AppUsageModule as AppUsageModuleContract | undefined;
   const scrollDetectionModule = NativeModules.ScrollDetectionModule as ScrollDetectionModuleContract | undefined;
   const pushNotificationManager =
@@ -82,6 +95,52 @@ export function getPermissionStatusSupport(): {
     usageAccess: Boolean(appUsageModule?.hasUsageAccessPermission || appUsageModule?.getUsageStats),
     accessibility: Boolean(scrollDetectionModule?.isAccessibilityServiceEnabled),
     notifications: androidNotificationSupport || iosNotificationSupport,
+  };
+}
+
+export async function getPermissionSnapshot(): Promise<PermissionStatusSnapshot> {
+  const support = getPermissionStatusSupport();
+  const isAndroid = Platform.OS === 'android';
+
+  const permissionResults = await Promise.allSettled([
+    hasUsageAccessPermission({ allowExpensiveFallback: true }),
+    isAccessibilityServiceEnabled(),
+    areNotificationsEnabled(),
+  ]);
+
+  const usageAccess =
+    permissionResults[0].status === 'fulfilled' ? permissionResults[0].value : false;
+  const accessibility =
+    permissionResults[1].status === 'fulfilled' ? permissionResults[1].value : false;
+  const notifications =
+    permissionResults[2].status === 'fulfilled' ? permissionResults[2].value : false;
+
+  const usageAccessSupported = !isAndroid || support.usageAccess;
+  const accessibilitySupported = !isAndroid || support.accessibility;
+  const notificationsSupported = support.notifications;
+
+  const totalRequiredPermissions =
+    (isAndroid && usageAccessSupported ? 1 : 0)
+    + (isAndroid && accessibilitySupported ? 1 : 0)
+    + (notificationsSupported ? 1 : 0);
+  const completedPermissionsCount =
+    (isAndroid && usageAccessSupported && usageAccess ? 1 : 0)
+    + (isAndroid && accessibilitySupported && accessibility ? 1 : 0)
+    + (notificationsSupported && notifications ? 1 : 0);
+  const completionPercent =
+    totalRequiredPermissions > 0
+      ? Math.round((completedPermissionsCount / totalRequiredPermissions) * 100)
+      : 100;
+
+  return {
+    support,
+    usageAccess,
+    accessibility,
+    notifications,
+    totalRequiredPermissions,
+    completedPermissionsCount,
+    completionPercent,
+    allRequiredPermissionsEnabled: completedPermissionsCount === totalRequiredPermissions,
   };
 }
 

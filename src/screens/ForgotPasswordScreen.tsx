@@ -7,12 +7,25 @@ import { PrimaryButton } from '../components/ui/PrimaryButton';
 import { SectionCard } from '../components/ui/SectionCard';
 import { colors, radii } from '../theme/tokens';
 import { BACKEND_COMING_SOON_MESSAGE } from '../utils/featureFlags';
+import { resolveProtectedEntryRoute } from '../utils/appFlow';
 
 export function ForgotPasswordScreen(): React.JSX.Element {
   const navigation = useNavigation<any>();
   const handleReset = (): void => {
     Alert.alert('Coming soon', BACKEND_COMING_SOON_MESSAGE);
   };
+
+  const handleContinueAsGuest = React.useCallback((): void => {
+    resolveProtectedEntryRoute()
+      .then(routeName => {
+        navigation.replace(routeName);
+      })
+      .catch(error => {
+        if (__DEV__) {
+          console.warn('[ForgotPasswordScreen] Failed to resolve guest route.', error);
+        }
+      });
+  }, [navigation]);
 
   return (
     <AppScreen
@@ -27,7 +40,7 @@ export function ForgotPasswordScreen(): React.JSX.Element {
         <TextInput placeholder="you@example.com" placeholderTextColor="#8B98AC" style={styles.input} />
       </SectionCard>
 
-      <PrimaryButton label="Continue as Guest" onPress={() => navigation.replace('MainTabs')} />
+      <PrimaryButton label="Continue as Guest" onPress={handleContinueAsGuest} />
       <PrimaryButton label="Send Reset Link (Coming soon)" variant="secondary" onPress={handleReset} />
       <PrimaryButton label="Back to Login" variant="ghost" onPress={() => navigation.goBack()} />
       <Text style={styles.helpText}>Having trouble? Contact ScrollGuard Support.</Text>

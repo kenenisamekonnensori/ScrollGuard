@@ -6,12 +6,10 @@ import { PrimaryButton } from '../components/ui/PrimaryButton';
 import { SectionCard } from '../components/ui/SectionCard';
 import { colors } from '../theme/tokens';
 import {
-  areNotificationsEnabled,
-  getPermissionStatusSupport,
-  hasUsageAccessPermission,
-  isAccessibilityServiceEnabled,
+  getPermissionSnapshot,
 } from '../native/NativeBridgeService';
 import { openAndroidSettings, openAppSettings } from '../utils/settingsLinks';
+import { resolveProtectedEntryRoute } from '../utils/appFlow';
 
 type PermissionStatus = {
   usageAccess: boolean;
@@ -30,34 +28,37 @@ export function PermissionsSetupScreen(): React.JSX.Element {
   const isAndroid = Platform.OS === 'android';
   const [permissionStatus, setPermissionStatus] = React.useState<PermissionStatus>(INITIAL_PERMISSION_STATUS);
   const [isLoading, setIsLoading] = React.useState(true);
+  const [allPermissionsEnabled, setAllPermissionsEnabled] = React.useState(false);
+  const [totalRequiredPermissions, setTotalRequiredPermissions] = React.useState(0);
+  const [completedPermissionsCount, setCompletedPermissionsCount] = React.useState(0);
+  const [completionPercent, setCompletionPercent] = React.useState(100);
+  const [usageAccessSupported, setUsageAccessSupported] = React.useState(!isAndroid);
+  const [accessibilitySupported, setAccessibilitySupported] = React.useState(!isAndroid);
+  const [notificationsSupported, setNotificationsSupported] = React.useState(false);
 
   const refreshPermissionStatus = React.useCallback(async (): Promise<PermissionStatus> => {
     setIsLoading(true);
 
     try {
-      const permissionResults = await Promise.allSettled([
-        // Uses cached fallback to keep status accurate while avoiding repeated heavy calls.
-        hasUsageAccessPermission({ allowExpensiveFallback: true }),
-        isAccessibilityServiceEnabled(),
-        areNotificationsEnabled(),
-      ]);
+      const snapshot = await getPermissionSnapshot();
 
-      const usageAccess = permissionResults[0].status === 'fulfilled'
-        ? permissionResults[0].value
-        : false;
-      const accessibility = permissionResults[1].status === 'fulfilled'
-        ? permissionResults[1].value
-        : false;
-      const notifications = permissionResults[2].status === 'fulfilled'
-        ? permissionResults[2].value
-        : false;
+      const nextUsageAccessSupported = !isAndroid || snapshot.support.usageAccess;
+      const nextAccessibilitySupported = !isAndroid || snapshot.support.accessibility;
+      const nextNotificationsSupported = snapshot.support.notifications;
 
       const nextStatus: PermissionStatus = {
-        usageAccess,
-        accessibility,
-        notifications,
+        usageAccess: snapshot.usageAccess,
+        accessibility: snapshot.accessibility,
+        notifications: snapshot.notifications,
       };
 
+      setUsageAccessSupported(nextUsageAccessSupported);
+      setAccessibilitySupported(nextAccessibilitySupported);
+      setNotificationsSupported(nextNotificationsSupported);
+      setAllPermissionsEnabled(snapshot.allRequiredPermissionsEnabled);
+      setTotalRequiredPermissions(snapshot.totalRequiredPermissions);
+      setCompletedPermissionsCount(snapshot.completedPermissionsCount);
+      setCompletionPercent(snapshot.completionPercent);
       setPermissionStatus(nextStatus);
       return nextStatus;
     } catch (error) {
@@ -69,42 +70,19 @@ export function PermissionsSetupScreen(): React.JSX.Element {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [isAndroid]);
 
   useFocusEffect(
     React.useCallback(() => {
-      void refreshPermissionStatus();
+      refreshPermissionStatus().catch(focusError => {
+        if (__DEV__) {
+          console.warn('[PermissionsSetupScreen] Failed to refresh on focus.', focusError);
+        }
+      });
     }, [refreshPermissionStatus]),
   );
 
-  const permissionStatusSupport = getPermissionStatusSupport();
-
-  // Exclude unsupported status checks from progress to avoid misleading users with false OFF states.
-  const usageAccessSupported = !isAndroid || permissionStatusSupport.usageAccess;
-  const accessibilitySupported = !isAndroid || permissionStatusSupport.accessibility;
-  const notificationsSupported = permissionStatusSupport.notifications;
-
-  // Completion only includes checks that are supported on the current runtime.
-  const allPermissionsEnabled =
-    (!isAndroid || !usageAccessSupported || permissionStatus.usageAccess)
-    && (!isAndroid || !accessibilitySupported || permissionStatus.accessibility)
-    && (!notificationsSupported || permissionStatus.notifications);
-
-  const totalRequiredPermissions =
-    (isAndroid && usageAccessSupported ? 1 : 0)
-    + (isAndroid && accessibilitySupported ? 1 : 0)
-    + (notificationsSupported ? 1 : 0);
-
-  const completedPermissionsCount =
-    (notificationsSupported && permissionStatus.notifications ? 1 : 0)
-    + (isAndroid && usageAccessSupported && permissionStatus.usageAccess ? 1 : 0)
-    + (isAndroid && accessibilitySupported && permissionStatus.accessibility ? 1 : 0);
-
-  const completionPercent = totalRequiredPermissions > 0
-    ? Math.round((completedPermissionsCount / totalRequiredPermissions) * 100)
-    : 100;
-
-  const firstMissingPermissionAction = async (): Promise<void> => {
+  const firstMissingPermissionAction = React.useCallback(async (): Promise<void> => {
     // Refresh first to avoid opening the wrong settings page due to stale state.
     const latestStatus = await refreshPermissionStatus();
 
@@ -126,7 +104,82 @@ export function PermissionsSetupScreen(): React.JSX.Element {
     }
 
     await openAppSettings('PermissionsSetupScreen');
-  };
+  }, [
+    accessibilitySupported,
+    isAndroid,
+    notificationsSupported,
+    refreshPermissionStatus,
+    usageAccessSupported,
+  ]);
+
+  const handleContinue = React.useCallback((): void => {
+    resolveProtectedEntryRoute()
+      .then(routeName => {
+        if (routeName === 'MainTabs') {
+          navigation.replace(routeName);
+        }
+      })
+      .catch(error => {
+        if (__DEV__) {
+          console.warn('[PermissionsSetupScreen] Failed to verify permissions on continue.', error);
+        }
+      });
+  }, [navigation]);
+
+  const handleOpenUsageAccessSettings = React.useCallback((): void => {
+    openAndroidSettings('android.settings.USAGE_ACCESS_SETTINGS', 'PermissionsSetupScreen').catch(
+      error => {
+        if (__DEV__) {
+          console.warn('[PermissionsSetupScreen] Failed to open usage access settings.', error);
+        }
+      },
+    );
+  }, []);
+
+  const handleOpenAccessibilitySettings = React.useCallback((): void => {
+    openAndroidSettings('android.settings.ACCESSIBILITY_SETTINGS', 'PermissionsSetupScreen').catch(
+      error => {
+        if (__DEV__) {
+          console.warn('[PermissionsSetupScreen] Failed to open accessibility settings.', error);
+        }
+      },
+    );
+  }, []);
+
+  const handleOpenAppSettings = React.useCallback((): void => {
+    openAppSettings('PermissionsSetupScreen').catch(error => {
+      if (__DEV__) {
+        console.warn('[PermissionsSetupScreen] Failed to open app settings.', error);
+      }
+    });
+  }, []);
+
+  const handleOpenBatteryOptimizationSettings = React.useCallback((): void => {
+    openAndroidSettings(
+      'android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS',
+      'PermissionsSetupScreen',
+    ).catch(error => {
+      if (__DEV__) {
+        console.warn('[PermissionsSetupScreen] Failed to open battery optimization settings.', error);
+      }
+    });
+  }, []);
+
+  const handleOpenFirstMissingPermission = React.useCallback((): void => {
+    firstMissingPermissionAction().catch(error => {
+      if (__DEV__) {
+        console.warn('[PermissionsSetupScreen] Failed to open next missing permission.', error);
+      }
+    });
+  }, [firstMissingPermissionAction]);
+
+  const handleRefreshPermissionStatus = React.useCallback((): void => {
+    refreshPermissionStatus().catch(error => {
+      if (__DEV__) {
+        console.warn('[PermissionsSetupScreen] Failed to refresh permission status.', error);
+      }
+    });
+  }, [refreshPermissionStatus]);
 
   return (
     <AppScreen
@@ -136,7 +189,8 @@ export function PermissionsSetupScreen(): React.JSX.Element {
       <PrimaryButton
         label="All Set - Continue to App"
         variant="primary"
-        onPress={() => navigation.replace('MainTabs')}
+        onPress={handleContinue}
+        disabled={isLoading || !allPermissionsEnabled}
       />
 
       <SectionCard>
@@ -202,31 +256,44 @@ export function PermissionsSetupScreen(): React.JSX.Element {
           <PrimaryButton
             label="Open Usage Access Settings"
             variant="secondary"
-            onPress={() => void openAndroidSettings('android.settings.USAGE_ACCESS_SETTINGS', 'PermissionsSetupScreen')}
+            onPress={handleOpenUsageAccessSettings}
           />
         ) : null}
         {isAndroid ? (
           <PrimaryButton
             label="Open Accessibility Settings"
             variant="secondary"
-            onPress={() => void openAndroidSettings('android.settings.ACCESSIBILITY_SETTINGS', 'PermissionsSetupScreen')}
+            onPress={handleOpenAccessibilitySettings}
           />
         ) : null}
         <PrimaryButton
           label="Open App Settings (Notifications)"
           variant="secondary"
-          onPress={() => void openAppSettings('PermissionsSetupScreen')}
+          onPress={handleOpenAppSettings}
         />
       </SectionCard>
 
+      {isAndroid ? (
+        <SectionCard title="Battery Optimization">
+          <Text style={styles.batteryGuidance}>
+            Disable battery optimization for ScrollGuard so monitoring and blocking stay reliable while running in the background.
+          </Text>
+          <PrimaryButton
+            label="Open Battery Optimization Settings"
+            variant="secondary"
+            onPress={handleOpenBatteryOptimizationSettings}
+          />
+        </SectionCard>
+      ) : null}
+
       <PrimaryButton
         label="Open Missing Permission Settings"
-        onPress={() => void firstMissingPermissionAction()}
+        onPress={handleOpenFirstMissingPermission}
       />
       <PrimaryButton
         label="Refresh Permission Status"
         variant="secondary"
-        onPress={() => void refreshPermissionStatus()}
+        onPress={handleRefreshPermissionStatus}
       />
 
       {totalRequiredPermissions > 0 ? (
@@ -257,7 +324,7 @@ export function PermissionsSetupScreen(): React.JSX.Element {
       {!allPermissionsEnabled && !isLoading ? (
         <Text style={styles.warning}>Some permissions are still off. Core tracking and blocking may not work fully.</Text>
       ) : null}
-      {!isLoading && isAndroid && !permissionStatusSupport.accessibility ? (
+      {!isLoading && isAndroid && !accessibilitySupported ? (
         <Text style={styles.footer}>Accessibility status check requires a rebuilt app binary; use Refresh after rebuilding.</Text>
       ) : null}
       <Text style={styles.footer}>You can change these permissions anytime in Settings.</Text>
@@ -355,5 +422,10 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     fontSize: 12,
     marginTop: 4,
+  },
+  batteryGuidance: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
   },
 });

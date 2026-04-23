@@ -380,7 +380,7 @@ Events sent to React Native:
 
 ```
 onScrollDetected()
-onAppForegroundChanged()
+onForegroundAppChanged()
 ```
 
 ---
@@ -520,7 +520,15 @@ Periodically retrieves app usage statistics.
 Interval:
 
 ```
-30 seconds
+30 seconds (active mode)
+90 seconds (idle backoff mode)
+```
+
+Backoff behavior:
+
+```
+if no monitored app is foregrounded for 2+ minutes:
+  switch to idle polling cadence
 ```
 
 ---
@@ -547,6 +555,22 @@ Strategies:
 * Use MMKV for fast writes
 * Avoid frequent heavy queries
 * Process events asynchronously
+* Coalesce overlapping monitoring ticks into a single execution pipeline
+* Track runtime diagnostics counters to verify polling/event efficiency
+
+Phase 14 diagnostics surface:
+
+```
+getMonitoringDiagnostics()
+resetMonitoringDiagnostics()
+```
+
+Example diagnostics include:
+
+* total tick requests vs executed ticks
+* active vs idle poll schedules
+* foreground event volume and duplicate skips
+* optimistic sync usage deltas
 
 ---
 

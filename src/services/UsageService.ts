@@ -1,6 +1,10 @@
 import { getUsageStats } from '../native/NativeBridgeService';
 import { useUsageStore } from '../store/usageStore';
-import { MONITORED_PACKAGE_LIST } from '../utils/appPackages';
+import {
+  MONITORED_PACKAGE_ALIAS_LIST,
+  MONITORED_PACKAGE_LIST,
+  resolveCanonicalPackageName,
+} from '../utils/appPackages';
 
 function normalizeUsageSeconds(value: number): number {
   if (!Number.isFinite(value) || value <= 0) {
@@ -20,7 +24,18 @@ export async function fetchTodayUsage(): Promise<Record<string, number>> {
   const normalizedUsage: Record<string, number> = {};
 
   MONITORED_PACKAGE_LIST.forEach(packageName => {
-    normalizedUsage[packageName] = normalizeUsageSeconds(usageStats[packageName] ?? 0);
+    normalizedUsage[packageName] = 0;
+  });
+
+  MONITORED_PACKAGE_ALIAS_LIST.forEach(packageName => {
+    const canonicalPackage = resolveCanonicalPackageName(packageName);
+    const currentTotal = normalizedUsage[canonicalPackage] ?? 0;
+    const additionalUsage = normalizeUsageSeconds(usageStats[packageName] ?? 0);
+    normalizedUsage[canonicalPackage] = currentTotal + additionalUsage;
+  });
+
+  MONITORED_PACKAGE_LIST.forEach(packageName => {
+    normalizedUsage[packageName] = normalizeUsageSeconds(normalizedUsage[packageName] ?? 0);
   });
 
   setUsageStats(normalizedUsage);
