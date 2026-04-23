@@ -11,7 +11,11 @@ import {
 
 function App(): React.JSX.Element {
   useEffect(() => {
-    void startMonitoring();
+    startMonitoring().catch(error => {
+      if (__DEV__) {
+        console.warn('[App] Failed to start monitoring.', error);
+      }
+    });
 
     const appStateSubscription = AppState.addEventListener(
       'change',

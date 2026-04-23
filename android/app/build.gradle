@@ -57,7 +57,29 @@ react {
 /**
  * Set this to true to Run Proguard on Release builds to minify the Java bytecode.
  */
-def enableProguardInReleaseBuilds = false
+def resolveBuildConfig = { String propertyName, String envName = propertyName ->
+    def propertyValue = project.findProperty(propertyName)
+    if (propertyValue != null && propertyValue.toString().trim().length() > 0) {
+        return propertyValue.toString().trim()
+    }
+
+    def envValue = System.getenv(envName)
+    if (envValue != null && envValue.trim().length() > 0) {
+        return envValue.trim()
+    }
+
+    return null
+}
+
+def releaseStoreFilePath = resolveBuildConfig('SCROLLGUARD_RELEASE_STORE_FILE')
+def releaseStorePassword = resolveBuildConfig('SCROLLGUARD_RELEASE_STORE_PASSWORD')
+def releaseKeyAlias = resolveBuildConfig('SCROLLGUARD_RELEASE_KEY_ALIAS')
+def releaseKeyPassword = resolveBuildConfig('SCROLLGUARD_RELEASE_KEY_PASSWORD')
+
+def releaseSigningConfigured = releaseStoreFilePath && releaseStorePassword && releaseKeyAlias && releaseKeyPassword
+def allowDebugReleaseSigning = (resolveBuildConfig('SCROLLGUARD_ALLOW_DEBUG_RELEASE_SIGNING') ?: 'false').toBoolean()
+def failOnMissingReleaseSigning = (resolveBuildConfig('SCROLLGUARD_FAIL_ON_MISSING_RELEASE_SIGNING') ?: 'true').toBoolean()
+def enableProguardInReleaseBuilds = (resolveBuildConfig('SCROLLGUARD_ENABLE_MINIFY_RELEASE') ?: 'true').toBoolean()
 
 /**
  * The preferred build flavor of JavaScriptCore (JSC)
@@ -92,18 +114,56 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+
+        if (releaseSigningConfigured) {
+            release {
+                storeFile file(releaseStoreFilePath)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            signingConfig releaseSigningConfigured ? signingConfigs.release : signingConfigs.debug
             minifyEnabled enableProguardInReleaseBuilds
+            shrinkResources enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
+    }
+}
+
+tasks.register("verifyReleaseBuildConfig") {
+    group = "verification"
+    description = "Validates release signing and minification safeguards before release builds."
+
+    doLast {
+        if (!releaseSigningConfigured && failOnMissingReleaseSigning && !allowDebugReleaseSigning) {
+            throw new RuntimeException(
+                "Release signing config missing. Set SCROLLGUARD_RELEASE_STORE_FILE, " +
+                    "SCROLLGUARD_RELEASE_STORE_PASSWORD, SCROLLGUARD_RELEASE_KEY_ALIAS, and " +
+                    "SCROLLGUARD_RELEASE_KEY_PASSWORD via gradle properties or environment variables. " +
+                    "For local-only non-production builds, set SCROLLGUARD_ALLOW_DEBUG_RELEASE_SIGNING=true."
+            )
+        }
+
+        if (!enableProguardInReleaseBuilds) {
+            logger.warn("Release minification is disabled (SCROLLGUARD_ENABLE_MINIFY_RELEASE=false).")
+        }
+
+        if (!releaseSigningConfigured && allowDebugReleaseSigning) {
+            logger.warn("Using debug signing for release because SCROLLGUARD_ALLOW_DEBUG_RELEASE_SIGNING=true.")
+        }
+    }
+}
+
+tasks.configureEach { task ->
+    if (task.name == "preReleaseBuild" || task.name == "assembleRelease" || task.name == "bundleRelease") {
+        task.dependsOn(tasks.named("verifyReleaseBuildConfig"))
     }
 }
 

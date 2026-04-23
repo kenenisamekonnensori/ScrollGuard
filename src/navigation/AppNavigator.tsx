@@ -1,4 +1,7 @@
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import {
+  BottomTabNavigationOptions,
+  createBottomTabNavigator,
+} from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import React from 'react';
 import { DashboardScreen } from '../screens/DashboardScreen';
@@ -15,17 +18,52 @@ import { SettingsScreen } from '../screens/SettingsScreen';
 import { SignUpScreen } from '../screens/SignUpScreen';
 import { SplashScreen } from '../screens/SplashScreen';
 import { StatsScreen } from '../screens/StatsScreen';
-import { Text } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
 import { colors } from '../theme/tokens';
 import { MainTabParamList, RootStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
+const TAB_ICON_MAP: Record<keyof MainTabParamList, string> = {
+  DashboardScreen: '⌂',
+  StatsScreen: '▦',
+  FocusModeScreen: '◎',
+  NotificationsScreen: '◉',
+  SettingsScreen: '⚙',
+};
+
+type TabBarIconProps = {
+  color: string;
+  focused: boolean;
+  routeName: keyof MainTabParamList;
+};
+
+function TabBarIcon({ color, focused, routeName }: TabBarIconProps): React.JSX.Element {
+  return (
+    <Text
+      style={[
+        styles.tabBarIcon,
+        focused ? styles.tabBarIconFocused : styles.tabBarIconDefault,
+        { color },
+      ]}>
+      {TAB_ICON_MAP[routeName]}
+    </Text>
+  );
+}
+
+function createTabBarIconRenderer(
+  routeName: keyof MainTabParamList,
+): NonNullable<BottomTabNavigationOptions['tabBarIcon']> {
+  return ({ color, focused }) => (
+    <TabBarIcon color={color} focused={focused} routeName={routeName} />
+  );
+}
+
 function MainTabs(): React.JSX.Element {
   return (
     <Tab.Navigator
-      screenOptions={({ route }) => ({
+      screenOptions={{
         headerShown: false,
         tabBarHideOnKeyboard: true,
         tabBarShowLabel: true,
@@ -47,37 +85,38 @@ function MainTabs(): React.JSX.Element {
           fontWeight: '700',
           letterSpacing: 0.3,
         },
-        tabBarIcon: ({ color, focused }) => {
-          const iconMap: Record<keyof MainTabParamList, string> = {
-            DashboardScreen: '⌂',
-            StatsScreen: '▦',
-            FocusModeScreen: '◎',
-            NotificationsScreen: '◉',
-            SettingsScreen: '⚙',
-          };
-
-          return (
-            <Text
-              style={{
-                fontSize: focused ? 18 : 16,
-                color,
-                fontWeight: focused ? '800' : '600',
-                marginBottom: 2,
-              }}>
-              {iconMap[route.name]}
-            </Text>
-          );
-        },
-      })}>
-      <Tab.Screen name="DashboardScreen" component={DashboardScreen} options={{ title: 'Home' }} />
-      <Tab.Screen name="StatsScreen" component={StatsScreen} options={{ title: 'Analytics' }} />
-      <Tab.Screen name="FocusModeScreen" component={FocusModeScreen} options={{ title: 'Focus' }} />
+      }}>
+      <Tab.Screen
+        name="DashboardScreen"
+        component={DashboardScreen}
+        options={{ title: 'Home', tabBarIcon: createTabBarIconRenderer('DashboardScreen') }}
+      />
+      <Tab.Screen
+        name="StatsScreen"
+        component={StatsScreen}
+        options={{ title: 'Analytics', tabBarIcon: createTabBarIconRenderer('StatsScreen') }}
+      />
+      <Tab.Screen
+        name="FocusModeScreen"
+        component={FocusModeScreen}
+        options={{ title: 'Focus', tabBarIcon: createTabBarIconRenderer('FocusModeScreen') }}
+      />
       <Tab.Screen
         name="NotificationsScreen"
         component={NotificationsScreen}
-        options={{ title: 'Alerts' }}
+        options={{
+          title: 'Alerts',
+          tabBarIcon: createTabBarIconRenderer('NotificationsScreen'),
+        }}
       />
-      <Tab.Screen name="SettingsScreen" component={SettingsScreen} options={{ title: 'Settings' }} />
+      <Tab.Screen
+        name="SettingsScreen"
+        component={SettingsScreen}
+        options={{
+          title: 'Settings',
+          tabBarIcon: createTabBarIconRenderer('SettingsScreen'),
+        }}
+      />
     </Tab.Navigator>
   );
 }
@@ -160,3 +199,17 @@ export function AppNavigator(): React.JSX.Element {
     </Stack.Navigator>
   );
 }
+
+const styles = StyleSheet.create({
+  tabBarIcon: {
+    marginBottom: 2,
+  },
+  tabBarIconFocused: {
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  tabBarIconDefault: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+});

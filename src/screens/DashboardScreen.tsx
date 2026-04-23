@@ -64,6 +64,14 @@ export function DashboardScreen(): React.JSX.Element {
       })
     : 'Not synced yet';
 
+  const handleSyncNow = React.useCallback((): void => {
+    refreshMonitoringNow().catch(error => {
+      if (__DEV__) {
+        console.warn('[DashboardScreen] Failed to sync monitoring data.', error);
+      }
+    });
+  }, []);
+
   return (
     <AppScreen
       title="Your Focus Dashboard"
@@ -154,7 +162,7 @@ export function DashboardScreen(): React.JSX.Element {
       ) : null}
 
       <SectionCard title="Quick Actions">
-        <PrimaryButton label="Sync now" variant="secondary" onPress={() => void refreshMonitoringNow()} />
+        <PrimaryButton label="Sync now" variant="secondary" onPress={handleSyncNow} />
         <PrimaryButton label="Open Premium to unlock extra time" onPress={() => navigation.navigate('PremiumScreen')} />
         <PrimaryButton label="Preview Lock Overlay" variant="secondary" onPress={() => navigation.navigate('LockScreen')} />
         <PrimaryButton label="Open Profile" variant="ghost" onPress={() => navigation.navigate('ProfileScreen')} />
@@ -188,6 +196,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#EFF6FF',
     borderColor: '#BFDBFE',
   },
+
   heroChipLabel: {
     color: '#475569',
     fontSize: 12,

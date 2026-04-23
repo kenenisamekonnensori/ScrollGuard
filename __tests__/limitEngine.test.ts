@@ -1,10 +1,18 @@
 import { evaluateUsageLimits } from '../src/features/limits/limitEngine';
-import { blockApp } from '../src/features/blocking/blockingController';
+import {
+  blockApp,
+  isAppBlocked,
+} from '../src/features/blocking/blockingController';
 import { sendLimitReachedNotification } from '../src/services/NotificationService';
-import { MONITORED_PACKAGES, PACKAGE_LABELS } from '../src/utils/appPackages';
+import {
+  MONITORED_PACKAGES,
+  MONITORED_PACKAGE_GROUPS,
+  PACKAGE_LABELS,
+} from '../src/utils/appPackages';
 
 jest.mock('../src/features/blocking/blockingController', () => ({
   blockApp: jest.fn(),
+  isAppBlocked: jest.fn(),
 }));
 
 jest.mock('../src/services/NotificationService', () => ({
@@ -29,6 +37,7 @@ jest.mock('../src/store/settingsStore', () => ({
 describe('limitEngine.evaluateUsageLimits', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    (isAppBlocked as jest.Mock).mockReturnValue(false);
 
     mockSettingsStateGetter.mockReturnValue({
       userSettings: {
@@ -66,8 +75,9 @@ describe('limitEngine.evaluateUsageLimits', () => {
 
     await evaluateUsageLimits();
 
-    expect(blockApp).toHaveBeenCalledTimes(1);
-    expect(blockApp).toHaveBeenCalledWith(MONITORED_PACKAGES.tiktok);
+    expect(blockApp).toHaveBeenCalledTimes(MONITORED_PACKAGE_GROUPS.tiktok.length);
+    expect(blockApp).toHaveBeenNthCalledWith(1, MONITORED_PACKAGE_GROUPS.tiktok[0]);
+    expect(blockApp).toHaveBeenNthCalledWith(2, MONITORED_PACKAGE_GROUPS.tiktok[1]);
     expect(sendLimitReachedNotification).toHaveBeenCalledTimes(1);
     expect(sendLimitReachedNotification).toHaveBeenCalledWith(PACKAGE_LABELS[MONITORED_PACKAGES.tiktok]);
   });
@@ -83,7 +93,25 @@ describe('limitEngine.evaluateUsageLimits', () => {
 
     await evaluateUsageLimits();
 
-    expect(blockApp).toHaveBeenCalledTimes(3);
+    expect(blockApp).toHaveBeenCalledTimes(
+      MONITORED_PACKAGE_GROUPS.tiktok.length
+        + MONITORED_PACKAGE_GROUPS.instagram.length
+        + MONITORED_PACKAGE_GROUPS.youtube.length,
+    );
     expect(sendLimitReachedNotification).toHaveBeenCalledTimes(3);
+  });
+
+  test('does not re-block or re-notify apps that are already locked', async () => {
+    mockUsageStateGetter.mockReturnValue({
+      usageStats: {
+        [MONITORED_PACKAGES.tiktok]: 30 * 60,
+      },
+    });
+    (isAppBlocked as jest.Mock).mockReturnValue(true);
+
+    await evaluateUsageLimits();
+
+    expect(blockApp).not.toHaveBeenCalled();
+    expect(sendLimitReachedNotification).not.toHaveBeenCalled();
   });
 });

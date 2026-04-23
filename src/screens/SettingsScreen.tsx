@@ -132,10 +132,18 @@ export function SettingsScreen(): React.JSX.Element {
 
   useEffect(() => {
     isMountedRef.current = true;
-    void refreshActiveLocks();
+    refreshActiveLocks().catch(error => {
+      if (__DEV__) {
+        console.warn('[SettingsScreen] Initial active-lock refresh failed.', error);
+      }
+    });
 
     const interval = setInterval(() => {
-      void refreshActiveLocks();
+      refreshActiveLocks().catch(error => {
+        if (__DEV__) {
+          console.warn('[SettingsScreen] Scheduled active-lock refresh failed.', error);
+        }
+      });
     }, ACTIVE_LOCKS_REFRESH_MS);
 
     return () => {
@@ -252,7 +260,13 @@ export function SettingsScreen(): React.JSX.Element {
               <PrimaryButton
                 label={`Unlock ${lock.appName}`}
                 variant="ghost"
-                onPress={() => void handleUnlock(lock.packageName)}
+                onPress={() => {
+                  handleUnlock(lock.packageName).catch(error => {
+                    if (__DEV__) {
+                      console.warn('[SettingsScreen] Unlock action failed.', error);
+                    }
+                  });
+                }}
               />
             </View>
           ))

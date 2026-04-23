@@ -100,6 +100,45 @@ function sumRecordValues(record: Record<string, number>): number {
   }, 0);
 }
 
+function areNumericMapsEqual(
+  first: Record<string, number>,
+  second: Record<string, number>,
+): boolean {
+  const firstKeys = Object.keys(first);
+  const secondKeys = Object.keys(second);
+
+  if (firstKeys.length !== secondKeys.length) {
+    return false;
+  }
+
+  return firstKeys.every(key => first[key] === second[key]);
+}
+
+function areDailyHistoriesEqual(
+  first: DailyUsageSnapshot[],
+  second: DailyUsageSnapshot[],
+): boolean {
+  if (first.length !== second.length) {
+    return false;
+  }
+
+  return first.every((snapshot, index) => {
+    const nextSnapshot = second[index];
+
+    if (!nextSnapshot) {
+      return false;
+    }
+
+    return (
+      snapshot.date === nextSnapshot.date
+      && snapshot.totalSeconds === nextSnapshot.totalSeconds
+      && snapshot.totalVideos === nextSnapshot.totalVideos
+      && areNumericMapsEqual(snapshot.usageStats, nextSnapshot.usageStats)
+      && areNumericMapsEqual(snapshot.videoCounts, nextSnapshot.videoCounts)
+    );
+  });
+}
+
 function normalizeDailyHistory(history: DailyUsageSnapshot[]): DailyUsageSnapshot[] {
   return history
     .filter(snapshot => typeof snapshot.date === 'string' && snapshot.date.length > 0)
@@ -205,9 +244,17 @@ export const useUsageStore = create<UsageState>(set => ({
    */
   setUsageStats: usageStats => {
     set(state => {
+      if (areNumericMapsEqual(state.usageStats, usageStats)) {
+        return state;
+      }
+
       const nextHistory = buildUpdatedHistory(state.dailyHistory, usageStats, state.videoCounts);
       setValue(USAGE_STATS_STORAGE_KEY, usageStats);
-      setValue(DAILY_USAGE_HISTORY_STORAGE_KEY, nextHistory);
+
+      if (!areDailyHistoriesEqual(state.dailyHistory, nextHistory)) {
+        setValue(DAILY_USAGE_HISTORY_STORAGE_KEY, nextHistory);
+      }
+
       return {
         usageStats,
         dailyHistory: nextHistory,
@@ -220,9 +267,17 @@ export const useUsageStore = create<UsageState>(set => ({
    */
   setVideoCounts: videoCounts => {
     set(state => {
+      if (areNumericMapsEqual(state.videoCounts, videoCounts)) {
+        return state;
+      }
+
       const nextHistory = buildUpdatedHistory(state.dailyHistory, state.usageStats, videoCounts);
       setValue(VIDEO_COUNTS_STORAGE_KEY, videoCounts);
-      setValue(DAILY_USAGE_HISTORY_STORAGE_KEY, nextHistory);
+
+      if (!areDailyHistoriesEqual(state.dailyHistory, nextHistory)) {
+        setValue(DAILY_USAGE_HISTORY_STORAGE_KEY, nextHistory);
+      }
+
       return {
         videoCounts,
         dailyHistory: nextHistory,
@@ -239,6 +294,10 @@ export const useUsageStore = create<UsageState>(set => ({
    */
   updateUsage: (app, timeSpentSeconds) => {
     set(state => {
+      if (state.usageStats[app] === timeSpentSeconds) {
+        return state;
+      }
+
       const nextUsageStats: UsageStats = {
         ...state.usageStats,
         [app]: timeSpentSeconds,
@@ -246,7 +305,11 @@ export const useUsageStore = create<UsageState>(set => ({
       const nextHistory = buildUpdatedHistory(state.dailyHistory, nextUsageStats, state.videoCounts);
 
       setValue(USAGE_STATS_STORAGE_KEY, nextUsageStats);
-      setValue(DAILY_USAGE_HISTORY_STORAGE_KEY, nextHistory);
+
+      if (!areDailyHistoriesEqual(state.dailyHistory, nextHistory)) {
+        setValue(DAILY_USAGE_HISTORY_STORAGE_KEY, nextHistory);
+      }
+
       return {
         usageStats: nextUsageStats,
         dailyHistory: nextHistory,
@@ -267,7 +330,11 @@ export const useUsageStore = create<UsageState>(set => ({
       const nextHistory = buildUpdatedHistory(state.dailyHistory, state.usageStats, nextVideoCounts);
 
       setValue(VIDEO_COUNTS_STORAGE_KEY, nextVideoCounts);
-      setValue(DAILY_USAGE_HISTORY_STORAGE_KEY, nextHistory);
+
+      if (!areDailyHistoriesEqual(state.dailyHistory, nextHistory)) {
+        setValue(DAILY_USAGE_HISTORY_STORAGE_KEY, nextHistory);
+      }
+
       return {
         videoCounts: nextVideoCounts,
         dailyHistory: nextHistory,

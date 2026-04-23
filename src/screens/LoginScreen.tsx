@@ -10,6 +10,7 @@ import {
   BACKEND_COMING_SOON_MESSAGE,
   IS_BACKEND_READY,
 } from '../utils/featureFlags';
+import { resolveProtectedEntryRoute } from '../utils/appFlow';
 
 export function LoginScreen(): React.JSX.Element {
   const navigation = useNavigation<any>();
@@ -21,6 +22,18 @@ export function LoginScreen(): React.JSX.Element {
 
     navigation.replace('MainTabs');
   };
+
+  const handleContinueAsGuest = React.useCallback((): void => {
+    resolveProtectedEntryRoute()
+      .then(routeName => {
+        navigation.replace(routeName);
+      })
+      .catch(error => {
+        if (__DEV__) {
+          console.warn('[LoginScreen] Failed to resolve guest route.', error);
+        }
+      });
+  }, [navigation]);
 
   return (
     <AppScreen title="Welcome Back" subtitle="Sign in is optional. Guest mode supports full local tracking and blocking.">
@@ -35,7 +48,7 @@ export function LoginScreen(): React.JSX.Element {
         <TextInput placeholder="••••••••" placeholderTextColor="#8B98AC" secureTextEntry style={styles.input} />
       </SectionCard>
 
-      <PrimaryButton label="Continue as Guest" onPress={() => navigation.replace('MainTabs')} />
+      <PrimaryButton label="Continue as Guest" onPress={handleContinueAsGuest} />
       <PrimaryButton label="Sign In (Coming soon)" variant="secondary" onPress={handleBackendAuth} />
       <PrimaryButton label="Continue with Google (Coming soon)" variant="secondary" onPress={handleBackendAuth} />
       <PrimaryButton label="Forgot password?" variant="ghost" onPress={() => navigation.navigate('ForgotPasswordScreen')} />
