@@ -2,7 +2,10 @@ import { blockApp } from '../blocking/blockingController';
 import { isAppBlocked } from '../blocking/blockingController';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useUsageStore } from '../../store/usageStore';
-import { sendLimitReachedNotification } from '../../services/NotificationService';
+import {
+  sendLimitReachedNotification,
+  sendWarningNotification,
+} from '../../services/NotificationService';
 import {
   FAMILY_LIMIT_KEYS,
   MONITORED_PACKAGE_GROUPS,
@@ -53,6 +56,13 @@ export async function evaluateUsageLimits(): Promise<void> {
     }, 0);
     const usageMinutes = usageSeconds / 60;
     const limitMinutes = userSettings[app.settingKey];
+    const usagePercent = limitMinutes > 0 ? (usageMinutes / limitMinutes) * 100 : 0;
+
+    if (usagePercent >= 75 && usagePercent < 100) {
+      sendWarningNotification(app.appName, usageMinutes, 75);
+    } else if (usagePercent >= 50 && usagePercent < 75) {
+      sendWarningNotification(app.appName, usageMinutes, 50);
+    }
 
     if (usageMinutes > limitMinutes) {
       const packagesToBlock = app.packageNames.filter(packageName => !isAppBlocked(packageName));

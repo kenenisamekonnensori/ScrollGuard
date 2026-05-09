@@ -4,10 +4,10 @@ import { useNavigation } from '@react-navigation/native';
 import { AppScreen } from '../components/ui/AppScreen';
 import { PrimaryButton } from '../components/ui/PrimaryButton';
 import { SectionCard } from '../components/ui/SectionCard';
+import { refreshMonitoringNow } from '../services/MonitoringService';
 import { useSettingsStore } from '../store/settingsStore';
 import { useUsageStore } from '../store/usageStore';
 import { colors } from '../theme/tokens';
-import { refreshMonitoringNow } from '../services/MonitoringService';
 import {
   LIMIT_SETTING_KEYS,
   MONITORED_PACKAGE_LIST,
@@ -16,14 +16,13 @@ import {
 } from '../utils/appPackages';
 import { toMinutes } from '../utils/time';
 
-const APP_BAR_COLORS = ['#0EA5E9', '#22C55E', '#F97316'];
+const APP_BAR_COLORS = ['#21C8E6', '#5E8DF7', '#7B8797'];
 
-function formatDuration(seconds: number): string {
-  const minutes = toMinutes(seconds);
+function formatMinutes(minutes: number): string {
   if (minutes >= 60) {
     const hours = Math.floor(minutes / 60);
-    const remainderMinutes = minutes % 60;
-    return `${hours}h ${remainderMinutes.toString().padStart(2, '0')}m`;
+    const remainder = minutes % 60;
+    return `${hours}h ${remainder}m`;
   }
 
   return `${minutes}m`;
@@ -33,341 +32,309 @@ export function DashboardScreen(): React.JSX.Element {
   const navigation = useNavigation<any>();
   const usageStats = useUsageStore(state => state.usageStats);
   const videoCounts = useUsageStore(state => state.videoCounts);
-  const lastSyncedAt = useUsageStore(state => state.lastSyncedAt);
   const userSettings = useSettingsStore(state => state.userSettings);
+  const lastSyncedAt = useUsageStore(state => state.lastSyncedAt);
+
   const totalSeconds = Object.values(usageStats).reduce((acc, value) => acc + value, 0);
+  const totalMinutes = toMinutes(totalSeconds);
   const totalVideos = Object.values(videoCounts).reduce((acc, value) => acc + value, 0);
-  const hasUsageData = totalSeconds > 0 || totalVideos > 0;
-  const appsWithinLimit = MONITORED_PACKAGE_LIST.filter(packageName => {
-    const seconds = usageStats[packageName] ?? 0;
-    const minutes = seconds / 60;
-    const limitKey = LIMIT_SETTING_KEYS[packageName];
-    return minutes <= userSettings[limitKey];
-  }).length;
-  const withinLimitPercentage = Math.round((appsWithinLimit / MONITORED_PACKAGE_LIST.length) * 100);
-  const maxUsageMinutes = Math.max(
-    ...MONITORED_PACKAGE_LIST.map(packageName => toMinutes(usageStats[packageName] ?? 0)),
-    1,
-  );
-  const focusStatus =
-    withinLimitPercentage >= 100
-      ? 'Perfect control today'
-      : withinLimitPercentage >= 67
-        ? 'Strong control with room to improve'
-        : 'Usage is above limits for multiple apps';
-  const focusMeterWidth = `${Math.max(withinLimitPercentage, 4)}%` as `${number}%`;
+  const totalLimit = MONITORED_PACKAGE_LIST.reduce((acc, packageName) => {
+    return acc + userSettings[LIMIT_SETTING_KEYS[packageName]];
+  }, 0);
+  const remainingMinutes = Math.max(totalLimit - totalMinutes, 0);
+  const limitUsedPercent = totalLimit > 0 ? Math.min(Math.round((totalMinutes / totalLimit) * 100), 100) : 0;
+  const ringBorderColor =
+    limitUsedPercent >= 100 ? '#F59E0B' : limitUsedPercent >= 75 ? '#21C8E6' : '#9EDFF0';
+  const appRows = MONITORED_PACKAGE_LIST.map(packageName => ({
+    packageName,
+    appName: PACKAGE_LABELS[packageName] ?? packageName,
+    icon: PACKAGE_ICONS[packageName] ?? '📱',
+    minutes: toMinutes(usageStats[packageName] ?? 0),
+    videos: videoCounts[packageName] ?? 0,
+    limitMinutes: userSettings[LIMIT_SETTING_KEYS[packageName]],
+  }));
+  const maxMinutes = Math.max(...appRows.map(row => row.minutes), 1);
+  const message =
+    limitUsedPercent >= 100
+      ? 'You hit your daily focus ceiling. Step away before the next lock starts stacking.'
+      : limitUsedPercent >= 75
+        ? 'You have watched a lot today. Consider taking a break before you hit your limit.'
+        : 'Usage is under control. Keep the streak clean while you still have room left.';
   const lastSyncLabel = lastSyncedAt
     ? new Date(lastSyncedAt).toLocaleTimeString([], {
         hour: '2-digit',
         minute: '2-digit',
-        second: '2-digit',
       })
     : 'Not synced yet';
 
-  const handleSyncNow = React.useCallback((): void => {
-    refreshMonitoringNow().catch(error => {
-      if (__DEV__) {
-        console.warn('[DashboardScreen] Failed to sync monitoring data.', error);
-      }
-    });
-  }, []);
-
   return (
     <AppScreen
-      title="Your Focus Dashboard"
-      subtitle="Live control panel for today’s short-video behavior and lock protection.">
+      title="ScrollGuard"
+      subtitle="Your live dashboard for daily focus and app protection.">
       <SectionCard>
-        <View style={styles.heroChips}>
-          <View style={[styles.heroChip, styles.timeChip]}>
-            <Text style={styles.heroChipLabel}>Today time</Text>
-            <Text style={styles.heroChipValue}>{toMinutes(totalSeconds)} min</Text>
-          </View>
-          <View style={[styles.heroChip, styles.videoChip]}>
-            <Text style={styles.heroChipLabel}>Videos</Text>
-            <Text style={styles.heroChipValue}>{totalVideos}</Text>
+        <View style={styles.heroTopRow}>
+          <Text style={styles.heroTitle}>Daily Focus</Text>
+          <View style={styles.limitBadge}>
+            <Text style={styles.limitBadgeText}>{limitUsedPercent}% Limit Used</Text>
           </View>
         </View>
 
-        <Text style={styles.heroLabel}>Time spent today</Text>
-        <Text style={styles.heroValue}>{toMinutes(totalSeconds)} min</Text>
-        <Text style={styles.heroSub}>Videos watched: {totalVideos}</Text>
-        <Text style={styles.heroSub}>Last sync: {lastSyncLabel}</Text>
-      </SectionCard>
-
-      <SectionCard title="Focus status">
-        <View
-          style={[
-            styles.focusStatusBox,
-            withinLimitPercentage >= 100
-              ? styles.focusStatusGreat
-              : withinLimitPercentage >= 67
-                ? styles.focusStatusGood
-                : styles.focusStatusNeedsAttention,
-          ]}>
-          <Text style={styles.focusStatusTitle}>Within limits: {withinLimitPercentage}%</Text>
-          <Text style={styles.focusStatusMeta}>Apps in range: {appsWithinLimit}/{MONITORED_PACKAGE_LIST.length}</Text>
-          <View style={styles.focusMeterTrack}>
-            <View style={[styles.focusMeterFill, { width: focusMeterWidth }]} />
+        <View style={styles.heroContent}>
+          <View style={[styles.ringWrap, { borderColor: ringBorderColor }]}>
+            <Text style={styles.ringValue}>{formatMinutes(totalMinutes)}</Text>
+            <Text style={styles.ringLabel}>SCROLLING</Text>
           </View>
-          <Text style={styles.focusStatusText}>{focusStatus}</Text>
-          <Text style={styles.focusStatusHint}>Based on local usage and your configured daily limits.</Text>
+
+          <View style={styles.heroStats}>
+            <View style={styles.heroStatRow}>
+              <Text style={styles.heroStatDot}>◉</Text>
+              <Text style={styles.heroStatText}>{totalVideos} videos watched</Text>
+            </View>
+            <View style={styles.heroStatRow}>
+              <Text style={styles.heroStatDot}>◉</Text>
+              <Text style={styles.heroStatText}>{remainingMinutes}m remaining</Text>
+            </View>
+            <View style={styles.meterTrack}>
+              <View style={[styles.meterFill, { width: `${Math.max(limitUsedPercent, 6)}%` }]} />
+            </View>
+            <Text style={styles.heroMeta}>Last sync: {lastSyncLabel}</Text>
+          </View>
         </View>
       </SectionCard>
 
-      <SectionCard title="App usage summary">
-        {/* Read app identity from shared constants so package/name changes happen in one place. */}
-        {MONITORED_PACKAGE_LIST.map((packageName, index) => {
-          const seconds = usageStats[packageName] ?? 0;
-          const videos = videoCounts[packageName] ?? 0;
-          const minutes = toMinutes(seconds);
-          const isLast = index === MONITORED_PACKAGE_LIST.length - 1;
+      <View style={styles.callout}>
+        <Text style={styles.calloutIcon}>i</Text>
+        <Text style={styles.calloutText}>{message}</Text>
+      </View>
 
-          return (
-            <View key={packageName} style={isLast ? styles.appRowNoBorder : styles.appRow}>
-              <View style={styles.appTopRow}>
-                <View style={styles.appInfo}>
-                  <View style={styles.appIconWrap}>
-                    <Text style={styles.appIcon}>{PACKAGE_ICONS[packageName] ?? '📱'}</Text>
-                  </View>
-                  <View>
-                    <Text style={styles.appName}>{PACKAGE_LABELS[packageName] ?? packageName}</Text>
-                    <Text style={styles.appSub}>Videos: {videos}</Text>
-                  </View>
-                </View>
-                <View style={styles.appRight}>
-                  <Text style={styles.appTime}>Time: {formatDuration(seconds)}</Text>
-                </View>
+      <View style={styles.actionRow}>
+        <View style={styles.actionButtonWrap}>
+          <PrimaryButton label="Focus Mode" onPress={() => navigation.navigate('FocusModeScreen')} />
+        </View>
+        <View style={styles.actionButtonWrap}>
+          <PrimaryButton
+            label="Adjust Limits"
+            variant="secondary"
+            onPress={() => navigation.navigate('SettingsScreen')}
+          />
+        </View>
+      </View>
+
+      <SectionCard title="App Usage Breakdown">
+        {appRows.map((row, index) => (
+          <View key={row.packageName} style={styles.appRow}>
+            <View style={styles.appLeft}>
+              <View style={styles.appIconWrap}>
+                <Text style={styles.appIcon}>{row.icon}</Text>
               </View>
-
-              <View style={styles.progressTrack}>
-                <View
-                  style={[
-                    styles.progressFill,
-                    {
-                      backgroundColor: APP_BAR_COLORS[index % APP_BAR_COLORS.length],
-                      width: `${Math.max((minutes / maxUsageMinutes) * 100, minutes > 0 ? 8 : 0)}%` as `${number}%`,
-                    },
-                  ]}
-                />
+              <View>
+                <Text style={styles.appName}>{row.appName}</Text>
+                <Text style={styles.appSub}>{row.videos} videos watched</Text>
               </View>
             </View>
-          );
-        })}
+            <View style={styles.appRight}>
+              <Text style={styles.appTime}>{formatMinutes(row.minutes)}</Text>
+              <View style={styles.microBars}>
+                {[0, 1, 2].map(step => (
+                  <View
+                    key={`${row.packageName}-${step}`}
+                    style={[
+                      styles.microBar,
+                      {
+                        opacity: (row.minutes / maxMinutes) * 3 > step ? 1 : 0.2,
+                        backgroundColor: APP_BAR_COLORS[index % APP_BAR_COLORS.length],
+                      },
+                    ]}
+                  />
+                ))}
+              </View>
+            </View>
+          </View>
+        ))}
       </SectionCard>
 
-      {!hasUsageData ? (
-        <View style={styles.alertBox}>
-          <Text style={styles.alertText}>No usage tracked yet. Start scroll detection to see live stats.</Text>
-        </View>
-      ) : null}
-
-      <SectionCard title="Quick Actions">
-        <PrimaryButton label="Sync now" variant="secondary" onPress={handleSyncNow} />
-        <PrimaryButton label="Open Premium to unlock extra time" onPress={() => navigation.navigate('PremiumScreen')} />
-        <PrimaryButton label="Preview Lock Overlay" variant="secondary" onPress={() => navigation.navigate('LockScreen')} />
-        <PrimaryButton label="Open Profile" variant="ghost" onPress={() => navigation.navigate('ProfileScreen')} />
-      </SectionCard>
-
-      <View style={styles.badgeRow}>
-        <Text style={styles.badgeMuted}>Streak: Coming soon</Text>
-        <Text style={styles.badgeStrong}>Within limit: {withinLimitPercentage}%</Text>
-      </View>
+      <PrimaryButton
+        label="Refresh Dashboard"
+        variant="ghost"
+        onPress={() => {
+          refreshMonitoringNow().catch(error => {
+            if (__DEV__) {
+              console.warn('[DashboardScreen] Failed to sync monitoring data.', error);
+            }
+          });
+        }}
+      />
     </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  heroChips: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  heroChip: {
-    flex: 1,
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-  },
-  timeChip: {
-    backgroundColor: '#ECFEFF',
-    borderColor: '#99F6E4',
-  },
-  videoChip: {
-    backgroundColor: '#EFF6FF',
-    borderColor: '#BFDBFE',
-  },
-
-  heroChipLabel: {
-    color: '#475569',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  heroChipValue: {
-    color: '#0F172A',
-    fontSize: 22,
-    fontWeight: '800',
-    marginTop: 2,
-  },
-  heroLabel: {
-    color: colors.textMuted,
-    fontSize: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    fontWeight: '600',
-  },
-  heroValue: {
-    fontSize: 38,
-    lineHeight: 44,
-    color: colors.primaryDark,
-    fontWeight: '800',
-  },
-  heroSub: {
-    color: colors.textMuted,
-    fontSize: 13,
-  },
-  focusStatusBox: {
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 12,
-    gap: 4,
-  },
-  focusStatusGreat: {
-    backgroundColor: '#ECFDF5',
-    borderColor: '#86EFAC',
-  },
-  focusStatusGood: {
-    backgroundColor: '#F0F9FF',
-    borderColor: '#7DD3FC',
-  },
-  focusStatusNeedsAttention: {
-    backgroundColor: '#FFF7ED',
-    borderColor: '#FDBA74',
-  },
-  focusStatusTitle: {
-    color: '#0F172A',
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  focusStatusMeta: {
-    color: '#334155',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  focusMeterTrack: {
-    height: 8,
-    borderRadius: 999,
-    backgroundColor: '#DDE7EE',
-    overflow: 'hidden',
-    marginTop: 2,
-  },
-  focusMeterFill: {
-    height: '100%',
-    borderRadius: 999,
-    backgroundColor: '#0EA5E9',
-  },
-  focusStatusText: {
-    color: '#0F172A',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  focusStatusHint: {
-    color: '#64748B',
-    fontSize: 12,
-  },
-  alertBox: {
-    borderWidth: 1,
-    borderColor: '#B6E9F4',
-    backgroundColor: '#EEF9FC',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  alertText: {
-    color: '#0F3B47',
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  appRow: {
-    gap: 7,
-    paddingBottom: 10,
-    marginBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E9F2F4',
-  },
-  appRowNoBorder: {
-    gap: 7,
-  },
-  appTopRow: {
+  heroTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-  },
-  appInfo: {
-    flexDirection: 'row',
     gap: 10,
+  },
+  heroTitle: {
+    color: '#0B1330',
+    fontSize: 24,
+    fontWeight: '800',
+  },
+  limitBadge: {
+    borderRadius: 999,
+    backgroundColor: '#EAFBFF',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  limitBadgeText: {
+    color: colors.primaryDark,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  heroContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 18,
+  },
+  ringWrap: {
+    width: 128,
+    height: 128,
+    borderRadius: 64,
+    borderWidth: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ringValue: {
+    color: '#0B1330',
+    fontSize: 30,
+    fontWeight: '900',
+  },
+  ringLabel: {
+    color: '#7A8CA4',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.7,
+  },
+  heroStats: {
+    flex: 1,
+    gap: 10,
+  },
+  heroStatRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  heroStatDot: {
+    color: colors.primary,
+    fontSize: 10,
+  },
+  heroStatText: {
+    color: '#24324A',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  meterTrack: {
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: '#E7EDF2',
+    overflow: 'hidden',
+  },
+  meterFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: colors.primary,
+  },
+  heroMeta: {
+    color: '#7A8CA4',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  callout: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#CCEEF4',
+    backgroundColor: '#F0FBFD',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'flex-start',
+  },
+  calloutIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    overflow: 'hidden',
+    textAlign: 'center',
+    lineHeight: 24,
+    color: colors.primaryDark,
+    backgroundColor: '#D8F5FB',
+    fontWeight: '800',
+  },
+  calloutText: {
+    flex: 1,
+    color: '#2E3D53',
+    fontSize: 15,
+    lineHeight: 23,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  actionButtonWrap: {
+    flex: 1,
+  },
+  appRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#ECF3F6',
+  },
+  appLeft: {
+    flexDirection: 'row',
+    gap: 12,
     alignItems: 'center',
   },
   appIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#F0F6F8',
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#F7FBFD',
     alignItems: 'center',
     justifyContent: 'center',
   },
   appIcon: {
-    fontSize: 15,
+    fontSize: 18,
   },
   appName: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '700',
+    color: '#0B1330',
+    fontSize: 16,
+    fontWeight: '800',
   },
   appSub: {
     color: colors.textMuted,
-    fontSize: 11,
-    marginTop: 1,
+    fontSize: 12,
+    marginTop: 2,
   },
   appRight: {
     alignItems: 'flex-end',
-    gap: 4,
+    gap: 8,
   },
   appTime: {
     color: colors.primaryDark,
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '800',
   },
-  progressTrack: {
-    height: 9,
-    backgroundColor: '#E5ECF5',
-    borderRadius: 999,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 999,
-  },
-  badgeRow: {
+  microBars: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 8,
+    gap: 3,
   },
-  badgeMuted: {
-    backgroundColor: colors.surfaceAlt,
-    color: colors.text,
+  microBar: {
+    width: 4,
+    height: 16,
     borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  badgeStrong: {
-    backgroundColor: '#DBF4FB',
-    color: '#0C4A6E',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    fontSize: 12,
-    fontWeight: '800',
   },
 });

@@ -42,4 +42,13 @@ class AppBlockingModule(private val reactContext: ReactApplicationContext) :
       promise.reject("E_IS_BLOCKED", error.message, error)
     }
   }
+
+  @ReactMethod
+  fun getLockedUntil(packageName: String, promise: Promise) {
+    try {
+      promise.resolve(BlockedAppsStore.getLockedUntil(reactContext, packageName))
+    } catch (error: Exception) {
+      promise.reject("E_LOCKED_UNTIL", error.message, error)
+    }
+  }
 }

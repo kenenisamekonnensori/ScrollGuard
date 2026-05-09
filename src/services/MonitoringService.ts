@@ -4,6 +4,7 @@ import {
   EmitterSubscription,
 } from 'react-native';
 import { evaluateUsageLimits } from '../features/limits/limitEngine';
+import { reconcileExpiredLocks } from '../features/blocking/blockingController';
 import { fetchTodayUsage } from './UsageService';
 import { scrollService } from './ScrollService';
 import { useUsageStore } from '../store/usageStore';
@@ -91,6 +92,7 @@ const isTestEnvironment =
   typeof globalThis !== 'undefined' && 'jest' in globalThis;
 
 async function monitorTick(): Promise<void> {
+  await reconcileExpiredLocks();
   await fetchTodayUsage();
   await evaluateUsageLimits();
   useUsageStore.getState().setLastSyncedAt(Date.now());

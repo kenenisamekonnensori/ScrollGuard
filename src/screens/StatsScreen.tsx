@@ -1,14 +1,11 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { AppScreen } from '../components/ui/AppScreen';
-import { MetricRow } from '../components/ui/MetricRow';
 import { SectionCard } from '../components/ui/SectionCard';
 import { useUsageStore } from '../store/usageStore';
 import { colors } from '../theme/tokens';
-import { MONITORED_PACKAGE_LIST, PACKAGE_ICONS, PACKAGE_LABELS } from '../utils/appPackages';
+import { MONITORED_PACKAGE_LIST, PACKAGE_LABELS } from '../utils/appPackages';
 import { toMinutes } from '../utils/time';
-
-const APP_BAR_COLORS = ['#0EA5E9', '#22C55E', '#F97316'];
 
 function formatMinutes(minutes: number): string {
   if (minutes >= 60) {
@@ -20,17 +17,35 @@ function formatMinutes(minutes: number): string {
   return `${minutes}m`;
 }
 
-function formatHistoryDateLabel(dateKey: string): string {
-  const parsedDate = new Date(`${dateKey}T00:00:00`);
-  if (Number.isNaN(parsedDate.getTime())) {
-    return dateKey;
+function getLocalDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function buildLastSevenDaysHistory(
+  dailyHistory: ReturnType<typeof useUsageStore.getState>['dailyHistory'],
+): Array<{ date: string; minutes: number; dayLabel: string }> {
+  const historyByDate = new Map(
+    dailyHistory.map(snapshot => [snapshot.date, toMinutes(snapshot.totalSeconds)]),
+  );
+  const days: Array<{ date: string; minutes: number; dayLabel: string }> = [];
+
+  for (let offset = 6; offset >= 0; offset -= 1) {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    date.setDate(date.getDate() - offset);
+    const dateKey = getLocalDateKey(date);
+
+    days.push({
+      date: dateKey,
+      minutes: historyByDate.get(dateKey) ?? 0,
+      dayLabel: date.toLocaleDateString(undefined, { weekday: 'narrow' }),
+    });
   }
 
-  return new Intl.DateTimeFormat(undefined, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  }).format(parsedDate);
+  return days;
 }
 
 export function StatsScreen(): React.JSX.Element {
@@ -40,341 +55,264 @@ export function StatsScreen(): React.JSX.Element {
 
   const dailyMinutes = Object.values(usageStats).reduce((total, value) => total + toMinutes(value), 0);
   const totalVideos = Object.values(videoCounts).reduce((total, value) => total + value, 0);
-  const weeklySeconds = dailyHistory.reduce((total, snapshot) => total + snapshot.totalSeconds, 0);
-  const weeklyVideos = dailyHistory.reduce((total, snapshot) => total + snapshot.totalVideos, 0);
-  const weeklyMinutes = toMinutes(weeklySeconds);
-  const sortedHistory = [...dailyHistory].sort((a, b) => b.date.localeCompare(a.date));
-  const chartHistory = [...sortedHistory].reverse();
-  const chartMaxMinutes = Math.max(
-    ...chartHistory.map(snapshot => toMinutes(snapshot.totalSeconds)),
-    1,
-  );
-  const latestSnapshot = sortedHistory[0];
-  const previousSnapshot = sortedHistory[1];
-  const latestMinutes = latestSnapshot ? toMinutes(latestSnapshot.totalSeconds) : dailyMinutes;
-  const previousMinutes = previousSnapshot ? toMinutes(previousSnapshot.totalSeconds) : latestMinutes;
-  const trendDeltaMinutes = latestMinutes - previousMinutes;
-  const trendDirection = trendDeltaMinutes > 1 ? 'up' : trendDeltaMinutes < -1 ? 'down' : 'flat';
-  const trendLabel =
-    trendDirection === 'up'
-      ? `+${Math.abs(trendDeltaMinutes)} min vs previous day`
-      : trendDirection === 'down'
-        ? `-${Math.abs(trendDeltaMinutes)} min vs previous day`
-        : 'No major change vs previous day';
+  const fullWeekHistory = buildLastSevenDaysHistory(dailyHistory);
+  const weeklyMinutes = fullWeekHistory.reduce((total, item) => total + item.minutes, 0);
+  const chartMaxMinutes = Math.max(...fullWeekHistory.map(snapshot => snapshot.minutes), 1);
+  const previousAverageMinutes =
+    fullWeekHistory.length > 1
+      ? Math.round(
+          fullWeekHistory
+            .slice(0, -1)
+            .reduce((total, snapshot) => total + snapshot.minutes, 0)
+            / (fullWeekHistory.length - 1),
+        )
+      : dailyMinutes;
+  const timeSavedMinutes = Math.max(previousAverageMinutes - dailyMinutes, 0);
+  const streakDays = (() => {
+    let streak = 0;
+    const reversed = [...fullWeekHistory].reverse();
 
-  // Build rows from shared constants so monitored package changes propagate consistently.
+    reversed.forEach(snapshot => {
+      const minutes = snapshot.minutes;
+      if (minutes > 0 && minutes <= Math.max(previousAverageMinutes, dailyMinutes || 1)) {
+        streak += 1;
+      }
+    });
+
+    return Math.max(streak, dailyMinutes > 0 ? 1 : 0);
+  })();
   const appRows = MONITORED_PACKAGE_LIST.map(packageName => {
     const minutes = toMinutes(usageStats[packageName] ?? 0);
-    const videos = videoCounts[packageName] ?? 0;
     return {
       packageName,
       appName: PACKAGE_LABELS[packageName] ?? packageName,
       minutes,
-      videos,
+      percent: dailyMinutes > 0 ? Math.round((minutes / dailyMinutes) * 100) : 0,
     };
   });
-
-  const maxMinutes = Math.max(...appRows.map(row => row.minutes), 1);
+  const chartSummary = fullWeekHistory;
 
   return (
     <AppScreen
       title="Usage Analytics"
-      subtitle="Daily and weekly summaries of your short-video behavior.">
-      <SectionCard title="Daily usage">
-        <View style={styles.summaryRow}>
-          <View style={[styles.summaryChip, styles.timeChip]}>
-            <Text style={styles.summaryChipLabel}>Today time</Text>
-            <Text style={styles.summaryChipValue}>{formatMinutes(dailyMinutes)}</Text>
-          </View>
-          <View style={[styles.summaryChip, styles.videoChip]}>
-            <Text style={styles.summaryChipLabel}>Videos</Text>
-            <Text style={styles.summaryChipValue}>{totalVideos}</Text>
-          </View>
-        </View>
+      subtitle="See how your screen time is trending across the week.">
+      <View style={styles.streakBanner}>
+        <Text style={styles.streakTitle}>{streakDays} Day Healthy Streak!</Text>
+        <Text style={styles.streakText}>
+          {dailyMinutes > 0
+            ? 'You are maintaining healthier digital habits with real local usage data.'
+            : 'Start tracking today to build a healthy streak.'}
+        </Text>
+      </View>
 
-        <MetricRow label="Time spent today" value={formatMinutes(dailyMinutes)} />
-        <MetricRow label="Videos watched" value={`${totalVideos}`} />
+      <View style={styles.metricRow}>
+        <SectionCard>
+          <Text style={styles.metricLabel}>Avg. Daily Videos</Text>
+          <Text style={styles.metricValue}>{totalVideos}</Text>
+          <Text style={[styles.metricTrend, totalVideos > 0 ? styles.metricTrendWarn : styles.metricTrendGood]}>
+            {totalVideos > 0 ? `${totalVideos} videos today` : 'No videos tracked today'}
+          </Text>
+        </SectionCard>
+        <SectionCard>
+          <Text style={styles.metricLabel}>Time Saved This Week</Text>
+          <Text style={styles.metricValue}>{formatMinutes(timeSavedMinutes)}</Text>
+          <Text style={styles.metricTrendGood}>
+            {timeSavedMinutes > 0 ? `-${timeSavedMinutes} min vs recent average` : 'No reduction yet'}
+          </Text>
+        </SectionCard>
+      </View>
+
+      <SectionCard title="Weekly Scrolling Time">
+        <Text style={styles.weeklyMeta}>Total: {weeklyMinutes} minutes in the last 7 days</Text>
+        <View style={styles.weekChartWrap}>
+          {chartSummary.length > 0 ? (
+            chartSummary.map(item => (
+              <View key={item.date} style={styles.weekChartCol}>
+                <View style={styles.weekChartTrack}>
+                  <View
+                    style={[
+                      styles.weekChartFill,
+                      { height: `${Math.max((item.minutes / chartMaxMinutes) * 100, item.minutes > 0 ? 12 : 0)}%` },
+                    ]}
+                  />
+                </View>
+                <Text style={styles.weekChartLabel}>{item.dayLabel}</Text>
+              </View>
+            ))
+          ) : (
+            <Text style={styles.emptyText}>No local weekly history yet.</Text>
+          )}
+        </View>
+      </SectionCard>
+
+      <SectionCard title="App Comparison">
+        <View style={styles.comparisonTrack}>
+          {appRows.map((row, index) => (
+            <View
+              key={`segment-${row.packageName}`}
+              style={[
+                styles.comparisonSegment,
+                index === 0 ? styles.legendDotCyan : index === 1 ? styles.legendDotBlue : styles.legendDotSlate,
+                { flex: Math.max(row.minutes, dailyMinutes === 0 ? 1 : 0) },
+              ]}
+            />
+          ))}
+        </View>
 
         {appRows.map((row, index) => (
-          <View key={row.packageName} style={styles.appUsageRow}>
-            <View style={styles.appUsageHeader}>
-              <View style={styles.appNameWrap}>
-                <Text style={styles.appIcon}>{PACKAGE_ICONS[row.packageName] ?? '📱'}</Text>
-                <Text style={styles.appName}>{row.appName}</Text>
-              </View>
-              <Text style={styles.appValue}>Time: {formatMinutes(row.minutes)} • Videos: {row.videos}</Text>
-            </View>
-            <View style={styles.progressTrack}>
+          <View key={row.packageName} style={styles.legendRow}>
+            <View style={styles.legendLeft}>
               <View
                 style={[
-                  styles.progressFill,
-                  { backgroundColor: APP_BAR_COLORS[index % APP_BAR_COLORS.length] },
-                  {
-                    width: `${Math.max((row.minutes / maxMinutes) * 100, row.minutes > 0 ? 8 : 0)}%`,
-                  },
+                  styles.legendDot,
+                  index === 0 ? styles.legendDotCyan : index === 1 ? styles.legendDotBlue : styles.legendDotSlate,
                 ]}
               />
+              <Text style={styles.legendLabel}>{row.appName}</Text>
             </View>
+            <Text style={styles.legendValue}>{row.percent}% • {formatMinutes(row.minutes)}</Text>
           </View>
         ))}
-      </SectionCard>
-
-      <SectionCard title="Momentum">
-        <View
-          style={[
-            styles.momentumWrap,
-            trendDirection === 'down'
-              ? styles.momentumGood
-              : trendDirection === 'up'
-                ? styles.momentumWarn
-                : styles.momentumNeutral,
-          ]}>
-          <Text style={styles.momentumTitle}>
-            {trendDirection === 'down'
-              ? 'Great trend'
-              : trendDirection === 'up'
-                ? 'Usage increased'
-                : 'Stable pace'}
-          </Text>
-          <Text style={styles.momentumValue}>{trendLabel}</Text>
-          <Text style={styles.momentumHint}>Based on your latest local daily snapshots.</Text>
-        </View>
-      </SectionCard>
-
-      <SectionCard title="Weekly usage">
-        <MetricRow label="Last 7 days time" value={formatMinutes(weeklyMinutes)} />
-        <MetricRow label="Last 7 days videos" value={`${weeklyVideos}`} />
-        {chartHistory.length > 0 ? (
-          <View style={styles.weekChartWrap}>
-            {chartHistory.map((snapshot, index) => {
-              const minutes = toMinutes(snapshot.totalSeconds);
-              const barHeight = Math.max((minutes / chartMaxMinutes) * 100, minutes > 0 ? 12 : 0);
-
-              return (
-                <View key={`${snapshot.date}-chart`} style={styles.weekChartCol}>
-                  <View style={styles.weekChartTrack}>
-                    <View
-                      style={[
-                        styles.weekChartFill,
-                        {
-                          height: `${barHeight}%`,
-                          backgroundColor: APP_BAR_COLORS[index % APP_BAR_COLORS.length],
-                        },
-                      ]}
-                    />
-                  </View>
-                  <Text style={styles.weekChartLabel}>{formatHistoryDateLabel(snapshot.date).split(',')[0]}</Text>
-                </View>
-              );
-            })}
-          </View>
-        ) : null}
-        <Text style={styles.helperText}>
-          Weekly values come from local daily snapshots stored on device.
-        </Text>
-        {sortedHistory.length === 0 ? (
-          <Text style={styles.helperText}>No local history yet. Keep using ScrollGuard to build your timeline.</Text>
-        ) : null}
-        <Text style={styles.helperText}>
-          Cloud sync for cross-device history is coming soon.
-        </Text>
-      </SectionCard>
-
-      <SectionCard title="Last 7 Days (Local)">
-        {sortedHistory.length > 0 ? (
-          sortedHistory.map((snapshot, index) => (
-            <View key={snapshot.date} style={index === sortedHistory.length - 1 ? styles.historyRowLast : styles.historyRow}>
-              <View>
-                <Text style={styles.historyDate}>{formatHistoryDateLabel(snapshot.date)}</Text>
-                <Text style={styles.historySub}>{snapshot.totalVideos} videos</Text>
-              </View>
-              <Text style={styles.historyTime}>{formatMinutes(toMinutes(snapshot.totalSeconds))}</Text>
-            </View>
-          ))
-        ) : (
-          <Text style={styles.helperText}>Daily entries will appear here after your first tracked sessions.</Text>
-        )}
-      </SectionCard>
-
-      <SectionCard title="Videos watched">
-        {appRows.map(row => (
-          <MetricRow key={`videos-${row.packageName}`} label={row.appName} value={`${row.videos}`} />
-        ))}
-        <MetricRow label="Total videos today" value={`${totalVideos}`} />
       </SectionCard>
     </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  appUsageRow: {
-    gap: 6,
-    paddingVertical: 2,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  summaryChip: {
-    flex: 1,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+  streakBanner: {
+    borderRadius: 18,
     borderWidth: 1,
-  },
-  timeChip: {
-    backgroundColor: '#ECFEFF',
-    borderColor: '#99F6E4',
-  },
-  videoChip: {
-    backgroundColor: '#EFF6FF',
-    borderColor: '#BFDBFE',
-  },
-  summaryChipLabel: {
-    color: '#475569',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  summaryChipValue: {
-    color: '#0F172A',
-    fontSize: 22,
-    fontWeight: '800',
-    marginTop: 2,
-  },
-  appUsageHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  appNameWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  appIcon: {
-    fontSize: 14,
-  },
-  appName: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  appValue: {
-    color: colors.textMuted,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  progressTrack: {
-    height: 10,
-    backgroundColor: '#E5ECF5',
-    borderRadius: 999,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 999,
-  },
-  momentumWrap: {
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 12,
+    borderColor: '#C9EEF4',
+    backgroundColor: '#EAFBFF',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     gap: 4,
   },
-  momentumGood: {
-    backgroundColor: '#ECFDF5',
-    borderColor: '#86EFAC',
-  },
-  momentumWarn: {
-    backgroundColor: '#FFF7ED',
-    borderColor: '#FDBA74',
-  },
-  momentumNeutral: {
-    backgroundColor: '#F8FAFC',
-    borderColor: '#CBD5E1',
-  },
-  momentumTitle: {
-    color: '#0F172A',
-    fontSize: 15,
+  streakTitle: {
+    color: colors.primaryDark,
+    fontSize: 17,
     fontWeight: '800',
   },
-  momentumValue: {
-    color: '#0F172A',
+  streakText: {
+    color: '#597084',
     fontSize: 13,
+    lineHeight: 19,
+  },
+  metricRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  metricLabel: {
+    color: '#5C6F82',
+    fontSize: 12,
     fontWeight: '600',
   },
-  momentumHint: {
-    color: '#64748B',
+  metricValue: {
+    color: '#0B1330',
+    fontSize: 34,
+    fontWeight: '900',
+    marginTop: 6,
+  },
+  metricTrend: {
     fontSize: 12,
+    fontWeight: '700',
+    marginTop: 4,
+  },
+  metricTrendGood: {
+    color: '#1F9E69',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 4,
+  },
+  metricTrendWarn: {
+    color: '#E07344',
+  },
+  weeklyMeta: {
+    color: colors.textMuted,
+    fontSize: 13,
+    marginBottom: 10,
   },
   weekChartWrap: {
-    marginTop: 2,
+    minHeight: 148,
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'space-between',
-    gap: 6,
-    minHeight: 108,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    borderWidth: 1,
-    borderColor: '#D8E6EE',
-    backgroundColor: '#F8FCFF',
+    gap: 10,
+    paddingTop: 8,
   },
   weekChartCol: {
     flex: 1,
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
   },
   weekChartTrack: {
-    width: 12,
-    height: 72,
+    width: 18,
+    height: 90,
     borderRadius: 999,
-    backgroundColor: '#E2E8F0',
+    backgroundColor: '#EDF3F6',
     justifyContent: 'flex-end',
     overflow: 'hidden',
   },
   weekChartFill: {
     width: '100%',
     borderRadius: 999,
+    backgroundColor: colors.primary,
   },
   weekChartLabel: {
-    fontSize: 10,
-    color: '#64748B',
+    color: '#74869B',
+    fontSize: 11,
     fontWeight: '700',
   },
-  historyRow: {
-    paddingVertical: 9,
+  comparisonTrack: {
+    height: 20,
+    borderRadius: 999,
+    overflow: 'hidden',
+    flexDirection: 'row',
+    backgroundColor: '#EDF3F6',
+    marginBottom: 12,
+  },
+  comparisonSegment: {
+    height: '100%',
+  },
+  legendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    borderBottomColor: '#ECF3F6',
   },
-  historyRowLast: {
-    paddingVertical: 9,
+  legendLeft: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 8,
   },
-  historyDate: {
-    color: '#0F172A',
-    fontSize: 13,
+  legendDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  legendDotCyan: {
+    backgroundColor: '#21C8E6',
+  },
+  legendDotBlue: {
+    backgroundColor: '#5E8DF7',
+  },
+  legendDotSlate: {
+    backgroundColor: '#7B8797',
+  },
+  legendLabel: {
+    color: '#0B1330',
+    fontSize: 14,
     fontWeight: '700',
   },
-  historySub: {
-    color: '#64748B',
-    fontSize: 12,
-    marginTop: 1,
-  },
-  historyTime: {
-    color: '#0C4A6E',
-    fontSize: 13,
+  legendValue: {
+    color: '#0B1330',
+    fontSize: 14,
     fontWeight: '800',
   },
-  helperText: {
+  emptyText: {
     color: colors.textMuted,
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: 14,
   },
 });

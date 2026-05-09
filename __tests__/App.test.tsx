@@ -58,6 +58,14 @@ jest.mock('react-native-mmkv', () => {
   };
 });
 
+jest.mock('react-native-notifications', () => ({
+  Notifications: {
+    registerRemoteNotifications: jest.fn(),
+    postLocalNotification: jest.fn(),
+    setNotificationChannel: jest.fn(),
+  },
+}));
+
 test('renders correctly', async () => {
   let renderer: ReactTestRenderer.ReactTestRenderer | undefined;
 

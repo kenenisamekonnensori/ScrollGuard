@@ -33,6 +33,7 @@ type AppBlockingModuleContract = {
   blockApp?: (packageName: string, durationMinutes: number) => Promise<void>;
   unblockApp?: (packageName: string) => Promise<void>;
   isAppBlocked?: (packageName: string) => Promise<boolean>;
+  getLockedUntil?: (packageName: string) => Promise<number | null>;
 };
 
 type IOSNotificationPermissions = {
@@ -309,4 +310,16 @@ export async function isAppBlocked(packageName: string): Promise<boolean> {
   }
 
   return false;
+}
+
+/**
+ * Reads the active native lock expiry timestamp for an app.
+ * Returns null when the app is not blocked or the native module is unavailable.
+ */
+export async function getNativeLockedUntil(packageName: string): Promise<number | null> {
+  if (AppBlockingModule?.getLockedUntil) {
+    return AppBlockingModule.getLockedUntil(packageName);
+  }
+
+  return null;
 }

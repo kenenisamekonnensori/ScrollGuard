@@ -3,7 +3,10 @@ import {
   blockApp,
   isAppBlocked,
 } from '../src/features/blocking/blockingController';
-import { sendLimitReachedNotification } from '../src/services/NotificationService';
+import {
+  sendLimitReachedNotification,
+  sendWarningNotification,
+} from '../src/services/NotificationService';
 import {
   MONITORED_PACKAGES,
   MONITORED_PACKAGE_GROUPS,
@@ -17,6 +20,7 @@ jest.mock('../src/features/blocking/blockingController', () => ({
 
 jest.mock('../src/services/NotificationService', () => ({
   sendLimitReachedNotification: jest.fn(),
+  sendWarningNotification: jest.fn(),
 }));
 
 const mockUsageStateGetter = jest.fn();
@@ -62,6 +66,7 @@ describe('limitEngine.evaluateUsageLimits', () => {
 
     expect(blockApp).not.toHaveBeenCalled();
     expect(sendLimitReachedNotification).not.toHaveBeenCalled();
+    expect(sendWarningNotification).toHaveBeenCalledTimes(2);
   });
 
   test('blocks app and notifies when a limit is exceeded', async () => {
