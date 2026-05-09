@@ -8,12 +8,22 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import androidx.core.app.NotificationCompat
 import com.scrollguard.MainActivity
 import com.scrollguard.R
 
 class BlockingForegroundService : Service() {
+  private val handler = Handler(Looper.getMainLooper())
+  private val cleanupRunnable = object : Runnable {
+    override fun run() {
+      BlockedAppsStore.cleanupExpiredBlocks(applicationContext)
+      handler.postDelayed(this, 1000L)
+    }
+  }
+
   companion object {
     private const val CHANNEL_ID = "scrollguard_blocker_channel"
     private const val CHANNEL_NAME = "ScrollGuard Protection"
@@ -40,10 +50,17 @@ class BlockingForegroundService : Service() {
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     startForeground(NOTIFICATION_ID, buildNotification())
+    handler.removeCallbacks(cleanupRunnable)
+    handler.post(cleanupRunnable)
     return START_STICKY
   }
 
   override fun onBind(intent: Intent?): IBinder? = null
+
+  override fun onDestroy() {
+    handler.removeCallbacks(cleanupRunnable)
+    super.onDestroy()
+  }
 
   private fun createNotificationChannel() {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {

@@ -29,6 +29,24 @@ object BlockedAppsStore {
     }
   }
 
+  fun unblockAppFamily(context: Context, packageName: String) {
+    val familyPackages =
+      when {
+        AppPackages.TIKTOK_PACKAGES.contains(packageName) -> AppPackages.TIKTOK_PACKAGES
+        AppPackages.INSTAGRAM_PACKAGES.contains(packageName) -> AppPackages.INSTAGRAM_PACKAGES
+        AppPackages.YOUTUBE_PACKAGES.contains(packageName) -> AppPackages.YOUTUBE_PACKAGES
+        else -> setOf(packageName)
+      }
+
+    prefs(context).edit().apply {
+      familyPackages.forEach { remove(PREFIX + it) }
+    }.apply()
+
+    if (BuildConfig.DEBUG) {
+      Log.d(TAG, "Block removed for family package=$packageName resolvedFamily=$familyPackages")
+    }
+  }
+
   fun getLockedUntil(context: Context, packageName: String): Long? {
     val key = PREFIX + packageName
     val stored = prefs(context).getLong(key, -1L)
@@ -49,5 +67,11 @@ object BlockedAppsStore {
 
   fun isBlocked(context: Context, packageName: String): Boolean {
     return getLockedUntil(context, packageName) != null
+  }
+
+  fun cleanupExpiredBlocks(context: Context) {
+    AppPackages.MONITORED_PACKAGES.forEach { packageName ->
+      getLockedUntil(context, packageName)
+    }
   }
 }

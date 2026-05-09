@@ -2,16 +2,17 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { AppScreen } from '../components/ui/AppScreen';
-import { MetricRow } from '../components/ui/MetricRow';
 import { PrimaryButton } from '../components/ui/PrimaryButton';
 import { SectionCard } from '../components/ui/SectionCard';
-import { getLockState, unblockApp } from '../features/blocking/blockingController';
-import { isAppBlocked as isAppBlockedNative } from '../native/NativeBridgeService';
+import {
+  getResolvedAppLocks,
+  ResolvedAppLock,
+  unblockAppFamily,
+} from '../features/blocking/blockingController';
 import { useSettingsStore } from '../store/settingsStore';
 import { colors } from '../theme/tokens';
 import { MONITORED_PACKAGE_LIST, PACKAGE_ICONS, PACKAGE_LABELS } from '../utils/appPackages';
 
-// A moderate interval reduces repeated MMKV/native calls while keeping lock state reasonably fresh.
 const ACTIVE_LOCKS_REFRESH_MS = 10_000;
 
 type SettingLimitKey =
@@ -19,12 +20,6 @@ type SettingLimitKey =
   | 'instagramLimitMinutes'
   | 'youtubeLimitMinutes'
   | 'lockDurationMinutes';
-
-type ActiveLockItem = {
-  packageName: (typeof MONITORED_PACKAGE_LIST)[number];
-  appName: string;
-  lockedUntil: number | null;
-};
 
 type LimitControlProps = {
   label: string;
@@ -34,6 +29,17 @@ type LimitControlProps = {
   onDecrease: () => void;
   onIncrease: () => void;
 };
+
+function formatLockTime(lockedUntil: number | null): string {
+  if (!lockedUntil) {
+    return 'Protected by native blocker';
+  }
+
+  return `Locked until ${new Date(lockedUntil).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+  })}`;
+}
 
 function LimitControl({
   label,
@@ -48,7 +54,10 @@ function LimitControl({
 
   return (
     <View style={styles.limitRow}>
-      <Text style={styles.limitLabel}>{label}</Text>
+      <View style={styles.limitCopy}>
+        <Text style={styles.limitLabel}>{label}</Text>
+        <Text style={styles.limitMeta}>{value} min</Text>
+      </View>
       <View style={styles.stepperWrap}>
         <Pressable
           disabled={disableDecrease}
@@ -56,7 +65,6 @@ function LimitControl({
           style={[styles.stepperButton, disableDecrease ? styles.stepperButtonDisabled : null]}>
           <Text style={styles.stepperSymbol}>−</Text>
         </Pressable>
-        <Text style={styles.stepperValue}>{value} min</Text>
         <Pressable
           disabled={disableIncrease}
           onPress={onIncrease}
@@ -72,7 +80,7 @@ export function SettingsScreen(): React.JSX.Element {
   const navigation = useNavigation<any>();
   const userSettings = useSettingsStore(state => state.userSettings);
   const updateLimit = useSettingsStore(state => state.updateLimit);
-  const [activeLocks, setActiveLocks] = useState<ActiveLockItem[]>([]);
+  const [activeLocks, setActiveLocks] = useState<ResolvedAppLock[]>([]);
   const isMountedRef = useRef(true);
 
   const adjustLimit = (key: SettingLimitKey, delta: number, min: number, max: number): void => {
@@ -82,29 +90,7 @@ export function SettingsScreen(): React.JSX.Element {
 
   const refreshActiveLocks = useCallback(async (): Promise<void> => {
     try {
-      const locks: ActiveLockItem[] = [];
-
-      for (const packageName of MONITORED_PACKAGE_LIST) {
-        const lockState = getLockState(packageName);
-        if (lockState) {
-          locks.push({
-            packageName,
-            appName: PACKAGE_LABELS[packageName] ?? packageName,
-            lockedUntil: lockState.lockedUntil,
-          });
-          continue;
-        }
-
-        const nativeBlocked = await isAppBlockedNative(packageName);
-        if (nativeBlocked) {
-          locks.push({
-            packageName,
-            appName: PACKAGE_LABELS[packageName] ?? packageName,
-            lockedUntil: null,
-          });
-        }
-      }
-
+      const locks = await getResolvedAppLocks();
       if (isMountedRef.current) {
         setActiveLocks(locks);
       }
@@ -112,7 +98,6 @@ export function SettingsScreen(): React.JSX.Element {
       if (__DEV__) {
         console.warn('[SettingsScreen] Failed to refresh active locks.', error);
       }
-
       if (isMountedRef.current) {
         setActiveLocks([]);
       }
@@ -121,11 +106,11 @@ export function SettingsScreen(): React.JSX.Element {
 
   const handleUnlock = async (packageName: string): Promise<void> => {
     try {
-      await unblockApp(packageName);
+      await unblockAppFamily(packageName);
       await refreshActiveLocks();
     } catch (error) {
       if (__DEV__) {
-        console.warn('[SettingsScreen] Failed to unlock app.', error);
+        console.warn('[SettingsScreen] Failed to unlock app family.', error);
       }
     }
   };
@@ -156,13 +141,8 @@ export function SettingsScreen(): React.JSX.Element {
     (userSettings.tiktokLimitMinutes
       + userSettings.instagramLimitMinutes
       + userSettings.youtubeLimitMinutes)
-      / 3,
+      / MONITORED_PACKAGE_LIST.length,
   );
-
-  const protectionStatus =
-    activeLocks.length === 0
-      ? 'No active app locks right now'
-      : `${activeLocks.length} active lock${activeLocks.length > 1 ? 's' : ''} currently enforced`;
 
   return (
     <AppScreen
@@ -171,7 +151,7 @@ export function SettingsScreen(): React.JSX.Element {
       <SectionCard>
         <View style={styles.summaryRow}>
           <View style={[styles.summaryChip, styles.summaryChipBlue]}>
-            <Text style={styles.summaryChipLabel}>Avg daily limit</Text>
+            <Text style={styles.summaryChipLabel}>Daily time limit</Text>
             <Text style={styles.summaryChipValue}>{averageDailyLimit} min</Text>
           </View>
           <View style={[styles.summaryChip, styles.summaryChipGreen]}>
@@ -181,24 +161,10 @@ export function SettingsScreen(): React.JSX.Element {
         </View>
       </SectionCard>
 
-      <SectionCard title="Protection Status">
-        <View
-          style={[
-            styles.protectionStatusBox,
-            activeLocks.length > 0 ? styles.protectionStatusWarn : styles.protectionStatusSafe,
-          ]}>
-          <Text style={styles.protectionStatusTitle}>
-            {activeLocks.length > 0 ? 'Focus shield active' : 'Focus shield ready'}
-          </Text>
-          <Text style={styles.protectionStatusText}>{protectionStatus}</Text>
-          <Text style={styles.protectionStatusHint}>All checks are local-first and work in Guest Mode.</Text>
-        </View>
-      </SectionCard>
-
       <Text style={styles.sectionLabel}>Usage Limits</Text>
       <SectionCard title="Daily Limits">
         <LimitControl
-          label="TikTok limit"
+          label="TikTok"
           value={userSettings.tiktokLimitMinutes}
           min={5}
           max={180}
@@ -206,7 +172,7 @@ export function SettingsScreen(): React.JSX.Element {
           onIncrease={() => adjustLimit('tiktokLimitMinutes', 5, 5, 180)}
         />
         <LimitControl
-          label="Instagram limit"
+          label="Instagram"
           value={userSettings.instagramLimitMinutes}
           min={5}
           max={180}
@@ -214,7 +180,7 @@ export function SettingsScreen(): React.JSX.Element {
           onIncrease={() => adjustLimit('instagramLimitMinutes', 5, 5, 180)}
         />
         <LimitControl
-          label="YouTube limit"
+          label="YouTube"
           value={userSettings.youtubeLimitMinutes}
           min={5}
           max={180}
@@ -224,7 +190,21 @@ export function SettingsScreen(): React.JSX.Element {
       </SectionCard>
 
       <Text style={styles.sectionLabel}>Focus Mode</Text>
-      <SectionCard title="Protection Rules">
+      <SectionCard title="Protection Status">
+        <View style={styles.statusHero}>
+          <Text style={styles.statusHeroTitle}>
+            {activeLocks.length > 0 ? 'Focus shield active' : 'Focus shield ready'}
+          </Text>
+          <Text style={styles.statusHeroText}>
+            {activeLocks.length > 0
+              ? `${activeLocks.length} app lock${activeLocks.length > 1 ? 's are' : ' is'} currently enforced`
+              : 'No apps are blocked right now'}
+          </Text>
+          <Text style={styles.statusHeroHint}>
+            Limit enforcement is local-first and keeps working through the native blocker service.
+          </Text>
+        </View>
+
         <LimitControl
           label="Lock duration"
           value={userSettings.lockDurationMinutes}
@@ -233,32 +213,24 @@ export function SettingsScreen(): React.JSX.Element {
           onDecrease={() => adjustLimit('lockDurationMinutes', -5, 5, 120)}
           onIncrease={() => adjustLimit('lockDurationMinutes', 5, 5, 120)}
         />
-        <MetricRow label="Warnings" value="50%, 75%, 100%" />
-        <Text style={styles.note}>When a limit is exceeded, lock overlay blocks the selected app until timer ends.</Text>
       </SectionCard>
 
-      <SectionCard title="Active App Locks">
+      <Text style={styles.sectionLabel}>Active Blocks</Text>
+      <SectionCard title="Manage Blocked Apps">
         {activeLocks.length > 0 ? (
           activeLocks.map(lock => (
             <View key={lock.packageName} style={styles.lockRow}>
-              <View style={styles.lockTopRow}>
-                <View style={styles.lockInfoWrap}>
-                  <View style={styles.lockTitleRow}>
-                    <Text style={styles.lockAppIcon}>{PACKAGE_ICONS[lock.packageName] ?? '📱'}</Text>
-                    <Text style={styles.lockAppName}>{lock.appName}</Text>
-                  </View>
-                  <Text style={styles.lockMeta}>
-                    {lock.lockedUntil
-                      ? `Locked until ${new Date(lock.lockedUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-                      : 'Blocked by native service'}
-                  </Text>
+              <View style={styles.lockLeft}>
+                <View style={styles.lockIconWrap}>
+                  <Text style={styles.lockIcon}>{PACKAGE_ICONS[lock.packageName] ?? '📱'}</Text>
                 </View>
-                <View style={styles.lockBadgeWrap}>
-                  <Text style={styles.lockBadge}>LOCKED</Text>
+                <View style={styles.lockCopy}>
+                  <Text style={styles.lockName}>{lock.appName}</Text>
+                  <Text style={styles.lockMeta}>{formatLockTime(lock.lockedUntil)}</Text>
                 </View>
               </View>
               <PrimaryButton
-                label={`Unlock ${lock.appName}`}
+                label="Unlock"
                 variant="ghost"
                 onPress={() => {
                   handleUnlock(lock.packageName).catch(error => {
@@ -271,15 +243,33 @@ export function SettingsScreen(): React.JSX.Element {
             </View>
           ))
         ) : (
-          <Text style={styles.note}>No apps are currently blocked.</Text>
+          <Text style={styles.emptyText}>No apps are currently blocked.</Text>
         )}
       </SectionCard>
 
-      <Text style={styles.sectionLabel}>Account & Privacy</Text>
-      <SectionCard title="Account & Privacy">
+      <Text style={styles.sectionLabel}>Privacy & Account</Text>
+      <SectionCard title="Account Controls">
         <PrimaryButton label="Open Profile" variant="secondary" onPress={() => navigation.navigate('ProfileScreen')} />
-        <PrimaryButton label="Manage Premium" variant="secondary" onPress={() => navigation.navigate('PremiumScreen')} />
-        <PrimaryButton label="Permissions Setup" variant="ghost" onPress={() => navigation.navigate('PermissionsSetupScreen')} />
+        {MONITORED_PACKAGE_LIST.map(packageName => (
+          <View key={packageName} style={styles.infoRow}>
+            <Text style={styles.infoLabel}>{PACKAGE_LABELS[packageName]}</Text>
+            <Text style={styles.infoValue}>Protected</Text>
+          </View>
+        ))}
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Premium</Text>
+          <Text style={styles.linkText} onPress={() => navigation.navigate('PremiumScreen')}>
+            Manage
+          </Text>
+        </View>
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Permissions</Text>
+          <Text
+            style={styles.linkText}
+            onPress={() => navigation.navigate('PermissionsSetupScreen')}>
+            Review
+          </Text>
+        </View>
       </SectionCard>
 
       <Text style={styles.legal}>Terms of Service • Privacy Policy • ScrollGuard v2.4.0</Text>
@@ -290,94 +280,84 @@ export function SettingsScreen(): React.JSX.Element {
 const styles = StyleSheet.create({
   summaryRow: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 12,
   },
   summaryChip: {
     flex: 1,
-    borderRadius: 12,
+    borderRadius: 18,
     borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
   },
   summaryChipBlue: {
-    backgroundColor: '#EFF6FF',
-    borderColor: '#BFDBFE',
+    backgroundColor: '#EEF7FF',
+    borderColor: '#CFE5FF',
   },
   summaryChipGreen: {
-    backgroundColor: '#ECFDF5',
-    borderColor: '#86EFAC',
+    backgroundColor: '#EDFFF5',
+    borderColor: '#C6F3D7',
   },
   summaryChipLabel: {
-    color: '#475569',
+    color: '#516273',
     fontSize: 12,
     fontWeight: '600',
   },
   summaryChipValue: {
-    color: '#0F172A',
-    fontSize: 22,
-    fontWeight: '800',
-    marginTop: 2,
-  },
-  protectionStatusBox: {
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 12,
-    gap: 4,
-  },
-  protectionStatusSafe: {
-    backgroundColor: '#F0F9FF',
-    borderColor: '#7DD3FC',
-  },
-  protectionStatusWarn: {
-    backgroundColor: '#FFF7ED',
-    borderColor: '#FDBA74',
-  },
-  protectionStatusTitle: {
-    color: '#0F172A',
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  protectionStatusText: {
-    color: '#0F172A',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  protectionStatusHint: {
-    color: '#64748B',
-    fontSize: 12,
+    color: '#0B1330',
+    fontSize: 28,
+    fontWeight: '900',
+    marginTop: 4,
   },
   sectionLabel: {
     fontSize: 11,
     textTransform: 'uppercase',
-    letterSpacing: 0.8,
+    letterSpacing: 0.9,
     color: colors.primaryDark,
     fontWeight: '800',
     marginBottom: -4,
   },
-  note: {
-    marginTop: 2,
-    fontSize: 13,
-    lineHeight: 18,
-    color: colors.textMuted,
+  statusHero: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#F4D8A7',
+    backgroundColor: '#FFF9F0',
+    padding: 16,
+    gap: 4,
   },
-  legal: {
-    textAlign: 'center',
-    color: '#94A3B8',
-    fontSize: 11,
-    marginTop: 2,
-    marginBottom: 10,
+  statusHeroTitle: {
+    color: '#0B1330',
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  statusHeroText: {
+    color: '#222F43',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  statusHeroHint: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
   },
   limitRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 10,
+    gap: 12,
+    paddingVertical: 6,
+  },
+  limitCopy: {
+    flex: 1,
+    gap: 2,
   },
   limitLabel: {
-    fontSize: 14,
+    fontSize: 15,
     color: colors.text,
-    fontWeight: '600',
-    flex: 1,
+    fontWeight: '700',
+  },
+  limitMeta: {
+    fontSize: 12,
+    color: colors.textMuted,
   },
   stepperWrap: {
     flexDirection: 'row',
@@ -385,12 +365,12 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   stepperButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceAlt,
+    borderColor: '#D9E8ED',
+    backgroundColor: '#F5FBFD',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -403,57 +383,77 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     lineHeight: 20,
   },
-  stepperValue: {
-    minWidth: 64,
-    textAlign: 'center',
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.text,
-  },
   lockRow: {
-    gap: 8,
-    paddingBottom: 10,
-    marginBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  lockTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 8,
+    gap: 10,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#ECF3F6',
   },
-  lockInfoWrap: {
-    gap: 2,
-  },
-  lockTitleRow: {
+  lockLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 10,
+    flex: 1,
   },
-  lockAppIcon: {
-    fontSize: 14,
+  lockIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 16,
+    backgroundColor: '#F2FBFD',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  lockAppName: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '700',
+  lockIcon: {
+    fontSize: 18,
+  },
+  lockCopy: {
+    flex: 1,
+  },
+  lockName: {
+    color: '#0B1330',
+    fontSize: 15,
+    fontWeight: '800',
   },
   lockMeta: {
     color: colors.textMuted,
     fontSize: 12,
+    marginTop: 2,
   },
-  lockBadgeWrap: {
-    alignItems: 'flex-end',
+  emptyText: {
+    color: colors.textMuted,
+    fontSize: 14,
   },
-  lockBadge: {
-    fontSize: 10,
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#ECF3F6',
+  },
+  infoLabel: {
+    color: '#0B1330',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  infoValue: {
+    color: colors.primaryDark,
+    fontSize: 13,
     fontWeight: '800',
-    color: '#0C4A6E',
-    backgroundColor: '#DBF4FB',
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    letterSpacing: 0.4,
+  },
+  linkText: {
+    color: colors.primaryDark,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  legal: {
+    textAlign: 'center',
+    color: '#94A3B8',
+    fontSize: 11,
+    marginTop: 2,
+    marginBottom: 10,
   },
 });

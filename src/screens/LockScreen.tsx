@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Screen } from '../components/Screen';
 import { PrimaryButton } from '../components/ui/PrimaryButton';
-import { colors, radii, spacing } from '../theme/tokens';
+import { colors, spacing } from '../theme/tokens';
 import { RootStackParamList } from '../navigation/types';
 import { getRandomMotivation } from '../features/motivation/motivationEngine';
 import {
@@ -32,7 +32,6 @@ function formatRemainingTime(remainingMs: number): string {
 export function LockScreen({ navigation, route }: Props): React.JSX.Element {
   const routeApp = route.params?.app;
   const routeLockedUntil = route.params?.lockedUntil;
-
   const persistedLock = routeApp ? getLockState(routeApp) : getActiveLockState();
   const [now, setNow] = React.useState(Date.now());
   const [message] = React.useState(getRandomMotivation());
@@ -40,8 +39,7 @@ export function LockScreen({ navigation, route }: Props): React.JSX.Element {
   const activeApp = routeApp ?? persistedLock?.app;
   const lockedUntil = routeLockedUntil ?? persistedLock?.lockedUntil;
   const hasLockContext = Boolean(activeApp && lockedUntil);
-
-  const displayAppName = activeApp ? APP_NAME_MAP[activeApp] ?? activeApp : 'No app';
+  const displayAppName = activeApp ? APP_NAME_MAP[activeApp] ?? activeApp : 'This app';
   const remainingMs = lockedUntil ? Math.max(0, lockedUntil - now) : 0;
   const isStillBlocked = activeApp ? isAppBlocked(activeApp) || remainingMs > 0 : false;
 
@@ -61,19 +59,14 @@ export function LockScreen({ navigation, route }: Props): React.JSX.Element {
     return (
       <Screen style={styles.safeArea}>
         <View style={styles.container}>
-          <View style={styles.visualWrap}>
-            <Text style={styles.visualIcon}>✅</Text>
+          <View style={styles.artCard}>
+            <Text style={styles.artIcon}>✓</Text>
           </View>
-
-          <View style={styles.lockCard}>
-            <Text style={styles.title}>No Active Lock</Text>
-            <Text style={styles.appName}>You currently do not have a blocked app.</Text>
-            <Text style={styles.info}>
-              Open this screen from an active lock event to see live countdown details.
-            </Text>
-          </View>
-
-          <PrimaryButton label="Return to Dashboard" onPress={() => navigation.navigate('MainTabs')} />
+          <Text style={styles.title}>No active lock</Text>
+          <Text style={styles.subtitle}>
+            Open this screen from an active block event to preview the live countdown experience.
+          </Text>
+          <PrimaryButton label="Go Back" onPress={() => navigation.navigate('MainTabs')} />
         </View>
       </Screen>
     );
@@ -82,29 +75,28 @@ export function LockScreen({ navigation, route }: Props): React.JSX.Element {
   return (
     <Screen style={styles.safeArea}>
       <View style={styles.container}>
-        <View style={styles.visualWrap}>
-          <Text style={styles.visualIcon}>⏳</Text>
+        <Text style={styles.brand}>ScrollGuard</Text>
+
+        <View style={styles.artCard}>
+          <Text style={styles.artIcon}>⏳</Text>
         </View>
 
-        <View style={styles.lockCard}>
-          <Text style={styles.title}>Time Limit Reached</Text>
-          <Text style={styles.appName}>{displayAppName} is temporarily blocked to protect your focus.</Text>
-          <Text style={styles.timer}>{formatRemainingTime(remainingMs)} remaining</Text>
-          <Text style={styles.message}>“{message}”</Text>
-          <Text style={styles.info}>
-            {isStillBlocked
-              ? 'Stay intentional. Access returns automatically when the timer finishes.'
-              : 'Lock expired. You can return to your dashboard now.'}
-          </Text>
-        </View>
+        <Text style={styles.title}>You've reached your scrolling limit.</Text>
+        <Text style={styles.subtitle}>
+          {displayAppName} is blocked for now. Take a break. Your future self will thank you for the extra time and focus.
+        </Text>
 
-        <PrimaryButton label="Return to Dashboard" onPress={() => navigation.navigate('MainTabs')} />
-        <PrimaryButton
-          label="Unlock with Premium"
-          variant="secondary"
-          onPress={() => navigation.navigate('PremiumScreen')}
-        />
-        <Text style={styles.premiumTag}>Extend limit • PREMIUM</Text>
+        <Text style={styles.timer}>{formatRemainingTime(remainingMs)}</Text>
+        <Text style={styles.message}>{message}</Text>
+
+        <PrimaryButton label="Go Back" onPress={() => navigation.navigate('MainTabs')} />
+        <Text style={styles.premiumText}>EXTEND LIMIT</Text>
+        <Text style={styles.premiumBadge}>PREMIUM</Text>
+        <Text style={styles.footerNote}>
+          {isStillBlocked
+            ? 'Access returns automatically when the timer finishes.'
+            : 'Lock expired. You can return now.'}
+        </Text>
       </View>
     </Screen>
   );
@@ -113,68 +105,87 @@ export function LockScreen({ navigation, route }: Props): React.JSX.Element {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: colors.overlay,
+    backgroundColor: '#FFFFFF',
   },
   container: {
     flex: 1,
     justifyContent: 'center',
-    paddingHorizontal: spacing.lg,
-    gap: spacing.sm,
+    paddingHorizontal: spacing.xl,
+    gap: 14,
   },
-  visualWrap: {
-    alignSelf: 'center',
-    width: 112,
-    height: 112,
-    borderRadius: 56,
-    backgroundColor: '#E2F6FB',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 4,
-  },
-  visualIcon: {
-    fontSize: 46,
-  },
-  lockCard: {
-    backgroundColor: '#132033',
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: '#334155',
-    padding: spacing.lg,
-    marginBottom: 10,
-  },
-  title: {
-    fontSize: 26,
+  brand: {
+    textAlign: 'center',
+    color: '#0B1330',
+    fontSize: 28,
     fontWeight: '800',
-    color: colors.white,
     marginBottom: 8,
   },
-  appName: {
-    fontSize: 16,
-    color: '#E2E8F0',
-    marginBottom: 12,
+  artCard: {
+    width: '100%',
+    aspectRatio: 1,
+    maxHeight: 300,
+    alignSelf: 'center',
+    borderRadius: 28,
+    backgroundColor: '#DFF7FF',
+    borderWidth: 1,
+    borderColor: '#C9EDF7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  artIcon: {
+    fontSize: 70,
+    color: colors.primaryDark,
+  },
+  title: {
+    textAlign: 'center',
+    color: '#0B1330',
+    fontSize: 24,
+    lineHeight: 32,
+    fontWeight: '900',
+  },
+  subtitle: {
+    textAlign: 'center',
+    color: '#5C6F82',
+    fontSize: 18,
+    lineHeight: 28,
   },
   timer: {
-    fontSize: 30,
-    fontWeight: '800',
-    color: '#93C5FD',
-    marginBottom: 10,
+    textAlign: 'center',
+    color: colors.primaryDark,
+    fontSize: 32,
+    fontWeight: '900',
+    letterSpacing: -0.8,
   },
   message: {
-    fontSize: 15,
-    color: '#CBD5E1',
-    fontStyle: 'italic',
-    marginBottom: 10,
-  },
-  info: {
-    fontSize: 13,
-    lineHeight: 18,
-    color: '#94A3B8',
-  },
-  premiumTag: {
     textAlign: 'center',
-    color: '#B8EAF4',
-    fontSize: 11,
-    fontWeight: '700',
+    color: '#6A7E93',
+    fontSize: 14,
+    lineHeight: 20,
+    fontStyle: 'italic',
+  },
+  premiumText: {
+    textAlign: 'center',
+    color: colors.primaryDark,
+    fontSize: 13,
+    fontWeight: '800',
     letterSpacing: 0.4,
+  },
+  premiumBadge: {
+    alignSelf: 'center',
+    color: '#8BA2B5',
+    backgroundColor: '#EEF7FA',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    fontSize: 10,
+    fontWeight: '800',
+    marginTop: -8,
+  },
+  footerNote: {
+    textAlign: 'center',
+    color: '#9AA8B8',
+    fontSize: 12,
+    fontStyle: 'italic',
+    marginTop: 8,
   },
 });

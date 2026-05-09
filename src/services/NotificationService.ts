@@ -1,39 +1,154 @@
+import { Platform } from 'react-native';
+import { Notifications } from 'react-native-notifications';
+import { getValue, setValue } from '../db/storage';
 import { getRandomMotivation } from '../features/motivation/motivationEngine';
 
-/**
- * Notification payload used by placeholder notification methods.
- */
-type NotificationPayload = {
+const NOTIFICATION_HISTORY_STORAGE_KEY = 'notificationHistory';
+const NOTIFICATION_CHANNEL_ID = 'scrollguard-alerts';
+const MAX_NOTIFICATION_HISTORY = 50;
+
+export type NotificationSeverity = 'info' | 'warning' | 'danger';
+
+export type NotificationHistoryItem = {
+  id: string;
+  dedupeKey: string;
   title: string;
   body: string;
+  severity: NotificationSeverity;
+  createdAt: number;
 };
 
-/**
- * Placeholder scheduler: currently logs notification intent.
- * This will be replaced with native notifications wiring in later phases.
- */
-function scheduleNotification(payload: NotificationPayload): void {
-  if (__DEV__) {
-    console.info('[NotificationService]', payload.title, payload.body);
+type NotificationPayload = {
+  dedupeKey: string;
+  title: string;
+  body: string;
+  severity: NotificationSeverity;
+  dedupeWindowMs?: number;
+};
+
+let didInitializeNotifications = false;
+
+function getNotificationHistory(): NotificationHistoryItem[] {
+  return getValue<NotificationHistoryItem[]>(NOTIFICATION_HISTORY_STORAGE_KEY) ?? [];
+}
+
+function saveNotificationHistory(history: NotificationHistoryItem[]): void {
+  setValue(NOTIFICATION_HISTORY_STORAGE_KEY, history.slice(-MAX_NOTIFICATION_HISTORY));
+}
+
+function initializeNotificationsIfNeeded(): void {
+  if (didInitializeNotifications) {
+    return;
+  }
+
+  didInitializeNotifications = true;
+
+  try {
+    Notifications.registerRemoteNotifications();
+  } catch (error) {
+    if (__DEV__) {
+      console.warn('[NotificationService] Failed to request notification permissions.', error);
+    }
+  }
+
+  if (Platform.OS === 'android') {
+    try {
+      Notifications.setNotificationChannel({
+        channelId: NOTIFICATION_CHANNEL_ID,
+        name: 'ScrollGuard Alerts',
+        importance: 4,
+        description: 'Usage warnings, lock events, and release updates',
+        enableLights: true,
+        enableVibration: true,
+        showBadge: true,
+      });
+    } catch (error) {
+      if (__DEV__) {
+        console.warn('[NotificationService] Failed to create Android notification channel.', error);
+      }
+    }
   }
 }
 
-/**
- * Sends a threshold warning notification for ongoing usage.
- */
-export function sendWarningNotification(appName: string, usageMinutes: number): void {
-  scheduleNotification({
-    title: `${appName} Usage Warning`,
-    body: `You have spent ${usageMinutes} minutes in ${appName}. ${getRandomMotivation()}`,
+function wasRecentlySent(dedupeKey: string, dedupeWindowMs: number): boolean {
+  const now = Date.now();
+  return getNotificationHistory().some(item => {
+    return item.dedupeKey === dedupeKey && now - item.createdAt < dedupeWindowMs;
   });
 }
 
-/**
- * Sends a limit-reached notification when blocking should be enforced.
- */
+function persistNotification(payload: NotificationPayload): NotificationHistoryItem {
+  const item: NotificationHistoryItem = {
+    id: `${payload.dedupeKey}-${Date.now()}`,
+    dedupeKey: payload.dedupeKey,
+    title: payload.title,
+    body: payload.body,
+    severity: payload.severity,
+    createdAt: Date.now(),
+  };
+
+  saveNotificationHistory([...getNotificationHistory(), item]);
+  return item;
+}
+
+function postLocalNotification(payload: NotificationPayload): void {
+  initializeNotificationsIfNeeded();
+
+  const dedupeWindowMs = payload.dedupeWindowMs ?? 15 * 60_000;
+  if (wasRecentlySent(payload.dedupeKey, dedupeWindowMs)) {
+    return;
+  }
+
+  const item = persistNotification(payload);
+
+  try {
+    Notifications.postLocalNotification({
+      title: item.title,
+      body: item.body,
+      sound: 'default',
+      channelId: NOTIFICATION_CHANNEL_ID,
+    } as any);
+  } catch (error) {
+    if (__DEV__) {
+      console.warn('[NotificationService] Failed to post local notification.', error);
+    }
+  }
+}
+
+export function getDeliveredNotificationHistory(): NotificationHistoryItem[] {
+  return getNotificationHistory().sort((first, second) => second.createdAt - first.createdAt);
+}
+
+export function sendWarningNotification(
+  appName: string,
+  usageMinutes: number,
+  thresholdPercent: 50 | 75,
+): void {
+  postLocalNotification({
+    dedupeKey: `${appName.toLowerCase()}-warning-${thresholdPercent}`,
+    title: `${appName} Usage Warning`,
+    body: `${appName} is at ${thresholdPercent}% of your daily limit (${Math.floor(usageMinutes)} min). ${getRandomMotivation()}`,
+    severity: 'warning',
+    dedupeWindowMs: 12 * 60 * 60_000,
+  });
+}
+
 export function sendLimitReachedNotification(appName: string): void {
-  scheduleNotification({
+  postLocalNotification({
+    dedupeKey: `${appName.toLowerCase()}-limit-reached`,
     title: `${appName} Limit Reached`,
-    body: `${appName} has reached its daily limit. ${getRandomMotivation()}`,
+    body: `${appName} has reached its daily limit and is now blocked. ${getRandomMotivation()}`,
+    severity: 'danger',
+    dedupeWindowMs: 12 * 60 * 60_000,
+  });
+}
+
+export function sendLockReleasedNotification(appName: string): void {
+  postLocalNotification({
+    dedupeKey: `${appName.toLowerCase()}-lock-released`,
+    title: `${appName} Unblocked`,
+    body: `${appName} is available again. Stay intentional as you go back in.`,
+    severity: 'info',
+    dedupeWindowMs: 5 * 60_000,
   });
 }

@@ -1,26 +1,21 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { AppScreen } from '../components/ui/AppScreen';
 import { MetricRow } from '../components/ui/MetricRow';
 import { SectionCard } from '../components/ui/SectionCard';
-import { getLockState } from '../features/blocking/blockingController';
-import { useSettingsStore } from '../store/settingsStore';
+import {
+  getResolvedAppLocks,
+  ResolvedAppLock,
+} from '../features/blocking/blockingController';
+import {
+  getDeliveredNotificationHistory,
+  NotificationHistoryItem,
+} from '../services/NotificationService';
 import { useUsageStore } from '../store/usageStore';
 import { colors } from '../theme/tokens';
-import {
-  LIMIT_SETTING_KEYS,
-  MONITORED_PACKAGE_LIST,
-  PACKAGE_LABELS,
-} from '../utils/appPackages';
-import { toMinutes } from '../utils/time';
 
-type AlertItem = {
-  id: string;
-  message: string;
-  severity: 'info' | 'warning' | 'danger';
-};
-
-function getAlertIcon(severity: AlertItem['severity']): string {
+function getAlertIcon(severity: NotificationHistoryItem['severity']): string {
   if (severity === 'danger') {
     return '🔒';
   }
@@ -32,63 +27,42 @@ function getAlertIcon(severity: AlertItem['severity']): string {
   return 'ℹ️';
 }
 
-export function NotificationsScreen(): React.JSX.Element {
-  const usageStats = useUsageStore(state => state.usageStats);
-  const videoCounts = useUsageStore(state => state.videoCounts);
-  const lastSyncedAt = useUsageStore(state => state.lastSyncedAt);
-  const userSettings = useSettingsStore(state => state.userSettings);
-
-  const alerts: AlertItem[] = [];
-
-  MONITORED_PACKAGE_LIST.forEach(packageName => {
-    const appName = PACKAGE_LABELS[packageName] ?? packageName;
-    const usageMinutes = toMinutes(usageStats[packageName] ?? 0);
-    const limitMinutes = userSettings[LIMIT_SETTING_KEYS[packageName]];
-    const usagePercent = limitMinutes > 0 ? (usageMinutes / limitMinutes) * 100 : 0;
-    const lockState = getLockState(packageName);
-
-    if (lockState) {
-      alerts.push({
-        id: `${packageName}-locked`,
-        message: `${appName} is currently blocked until ${new Date(lockState.lockedUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`,
-        severity: 'danger',
-      });
-      return;
-    }
-
-    if (usagePercent >= 100) {
-      alerts.push({
-        id: `${packageName}-limit`,
-        message: `${appName} reached its daily limit (${usageMinutes}/${limitMinutes} min).`,
-        severity: 'danger',
-      });
-      return;
-    }
-
-    if (usagePercent >= 75) {
-      alerts.push({
-        id: `${packageName}-warn75`,
-        message: `${appName} is at ${Math.floor(usagePercent)}% of daily limit (${usageMinutes}/${limitMinutes} min).`,
-        severity: 'warning',
-      });
-      return;
-    }
-
-    if (usagePercent >= 50) {
-      alerts.push({
-        id: `${packageName}-warn50`,
-        message: `${appName} crossed 50% of daily limit (${usageMinutes}/${limitMinutes} min).`,
-        severity: 'warning',
-      });
-    }
+function formatTimestamp(timestamp: number): string {
+  return new Date(timestamp).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
   });
+}
 
-  const totalVideos = Object.values(videoCounts).reduce((total, value) => total + value, 0);
-  const summaryAlert: AlertItem = {
-    id: 'videos-summary',
-    message: `Videos watched today: ${totalVideos}`,
-    severity: 'info',
-  };
+export function NotificationsScreen(): React.JSX.Element {
+  const lastSyncedAt = useUsageStore(state => state.lastSyncedAt);
+  const [activeLocks, setActiveLocks] = React.useState<ResolvedAppLock[]>([]);
+  const [history, setHistory] = React.useState<NotificationHistoryItem[]>([]);
+
+  const refreshScreenData = React.useCallback(async (): Promise<void> => {
+    try {
+      const [resolvedLocks] = await Promise.all([getResolvedAppLocks()]);
+      setActiveLocks(resolvedLocks);
+      setHistory(getDeliveredNotificationHistory());
+    } catch (error) {
+      if (__DEV__) {
+        console.warn('[NotificationsScreen] Failed to refresh notification data.', error);
+      }
+      setActiveLocks([]);
+      setHistory(getDeliveredNotificationHistory());
+    }
+  }, []);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      refreshScreenData().catch(error => {
+        if (__DEV__) {
+          console.warn('[NotificationsScreen] Failed to refresh on focus.', error);
+        }
+      });
+    }, [refreshScreenData]),
+  );
 
   const syncLabel = lastSyncedAt
     ? new Date(lastSyncedAt).toLocaleTimeString([], {
@@ -101,29 +75,52 @@ export function NotificationsScreen(): React.JSX.Element {
   return (
     <AppScreen
       title="Notifications Center"
-      subtitle="Review warnings, lock events, streak wins, and motivation nudges.">
-      <SectionCard title="Live Alerts">
-        {alerts.length > 0 ? (
-          alerts.map(alert => (
-            <View key={alert.id} style={styles.alertItem}>
-              <Text style={styles.item}>{getAlertIcon(alert.severity)} {alert.message}</Text>
+      subtitle="Real alerts sent to the device, plus current live lock status.">
+      <SectionCard title="Live Protection">
+        {activeLocks.length > 0 ? (
+          activeLocks.map(lock => (
+            <View key={lock.packageName} style={styles.alertItem}>
+              <Text style={styles.item}>
+                🔒 {lock.appName} is currently blocked
+                {lock.lockedUntil
+                  ? ` until ${new Date(lock.lockedUntil).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}.`
+                  : '.'}
+              </Text>
               <Text style={styles.time}>Updated {syncLabel}</Text>
             </View>
           ))
         ) : (
           <View style={styles.alertItem}>
-            <Text style={styles.item}>✅ No active warnings right now.</Text>
+            <Text style={styles.item}>✅ No active blocks right now.</Text>
             <Text style={styles.time}>Updated {syncLabel}</Text>
+          </View>
+        )}
+      </SectionCard>
+
+      <SectionCard title="Delivered Alerts">
+        {history.length > 0 ? (
+          history.map(item => (
+            <View key={item.id} style={styles.alertItem}>
+              <Text style={styles.item}>{getAlertIcon(item.severity)} {item.title}</Text>
+              <Text style={styles.body}>{item.body}</Text>
+              <Text style={styles.time}>Sent {formatTimestamp(item.createdAt)}</Text>
+            </View>
+          ))
+        ) : (
+          <View style={styles.alertItem}>
+            <Text style={styles.item}>ℹ️ No notifications have been sent yet.</Text>
+            <Text style={styles.time}>ScrollGuard will log real warnings and lock events here.</Text>
           </View>
         )}
       </SectionCard>
 
       <SectionCard title="Summary">
         <MetricRow label="Last sync" value={syncLabel} />
-        <View style={styles.alertItem}>
-          <Text style={styles.item}>{getAlertIcon(summaryAlert.severity)} {summaryAlert.message}</Text>
-          <Text style={styles.time}>Updated {syncLabel}</Text>
-        </View>
+        <MetricRow label="Delivered alerts" value={`${history.length}`} />
+        <MetricRow label="Active blocks" value={`${activeLocks.length}`} />
       </SectionCard>
     </AppScreen>
   );
@@ -131,7 +128,7 @@ export function NotificationsScreen(): React.JSX.Element {
 
 const styles = StyleSheet.create({
   alertItem: {
-    paddingVertical: 5,
+    paddingVertical: 6,
     borderBottomWidth: 1,
     borderBottomColor: '#EAF2F4',
     gap: 3,
@@ -140,6 +137,12 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 14,
     lineHeight: 21,
+    fontWeight: '700',
+  },
+  body: {
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 19,
   },
   time: {
     color: '#94A3B8',
