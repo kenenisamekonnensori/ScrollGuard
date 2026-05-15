@@ -8,6 +8,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { AppScreen } from '../components/ui/AppScreen';
 import { PrimaryButton } from '../components/ui/PrimaryButton';
 import { SectionCard } from '../components/ui/SectionCard';
@@ -281,37 +282,37 @@ export function FocusModeScreen(): React.JSX.Element {
     }).start();
   }, [fadeValue]);
 
-  // Initial hydration ensures the first render reflects any existing focus sessions from storage/native locks.
-  React.useEffect(() => {
-    refreshFocusSessions().catch(error => {
-      if (__DEV__) {
-        console.warn('[FocusModeScreen] Failed to refresh focus sessions.', error);
-      }
-    });
-  }, [refreshFocusSessions]);
-
   const activeSessions = React.useMemo(
     () => sessions.filter(isActiveSession),
     [sessions],
   );
   const hasAnyActiveSession = activeSessions.length > 0;
 
-  // Poll faster while sessions are active (for countdown/progress freshness), and slower while idle.
-  React.useEffect(() => {
-    const pollIntervalMs = hasAnyActiveSession ? ACTIVE_POLL_INTERVAL_MS : IDLE_POLL_INTERVAL_MS;
-    const timer = setInterval(() => {
+  // Keep UI polling scoped to screen focus so hidden tabs do not continue background refresh work.
+  useFocusEffect(
+    React.useCallback(() => {
       setNowMs(Date.now());
       refreshFocusSessions().catch(error => {
         if (__DEV__) {
-          console.warn('[FocusModeScreen] Scheduled focus refresh failed.', error);
+          console.warn('[FocusModeScreen] Failed to refresh focus sessions.', error);
         }
       });
-    }, pollIntervalMs);
 
-    return () => {
-      clearInterval(timer);
-    };
-  }, [hasAnyActiveSession, refreshFocusSessions]);
+      const pollIntervalMs = hasAnyActiveSession ? ACTIVE_POLL_INTERVAL_MS : IDLE_POLL_INTERVAL_MS;
+      const timer = setInterval(() => {
+        setNowMs(Date.now());
+        refreshFocusSessions().catch(error => {
+          if (__DEV__) {
+            console.warn('[FocusModeScreen] Scheduled focus refresh failed.', error);
+          }
+        });
+      }, pollIntervalMs);
+
+      return () => {
+        clearInterval(timer);
+      };
+    }, [hasAnyActiveSession, refreshFocusSessions]),
+  );
 
   // Completed list is sorted by completion timestamp so "Recent Completions" is always accurate.
   const completedSessions = React.useMemo(

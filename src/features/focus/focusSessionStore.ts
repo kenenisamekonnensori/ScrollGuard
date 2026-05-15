@@ -233,11 +233,6 @@ export const useFocusSessionStore = create<FocusSessionState>((set, get) => ({
   lastError: null,
 
   startFocusSession: async input => {
-    const currentSessions = get().sessions;
-    if (hasActiveSessionForApp(currentSessions, input.appFamily)) {
-      throw new Error('A focus session is already active for this app.');
-    }
-
     if (input.allowedUsageMinutes <= 0 || input.blockDurationMinutes <= 0) {
       throw new Error('Focus session durations must be greater than zero.');
     }
@@ -264,15 +259,19 @@ export const useFocusSessionStore = create<FocusSessionState>((set, get) => ({
       completedAt: null,
     };
 
-    const nextSessions = [...currentSessions, session];
+    const latestSessions = get().sessions;
+    if (hasActiveSessionForApp(latestSessions, input.appFamily)) {
+      throw new Error('A focus session is already active for this app.');
+    }
+
+    const nextSessions = [...latestSessions, session];
     persistSessions(nextSessions);
     set({ sessions: nextSessions, lastError: null });
     return session;
   },
 
   refreshFocusSessions: async () => {
-    const sessions = get().sessions;
-    const hasTrackingSession = sessions.some(session => session.status === 'tracking');
+    const hasTrackingSession = get().sessions.some(session => session.status === 'tracking');
 
     set({ isRefreshing: true, lastError: null });
 
@@ -283,8 +282,9 @@ export const useFocusSessionStore = create<FocusSessionState>((set, get) => ({
 
       const timestamp = now();
       const nativeLocks = await getResolvedAppLocks();
+      const latestSessions = get().sessions;
       const reconciled = await Promise.all(
-        sessions.map(async session => {
+        latestSessions.map(async session => {
           if (session.status === 'blocked' && session.blockedUntil === null) {
             const nativeLock = nativeLocks.find(lock => lock.packageName === session.packageName);
             if (!nativeLock) {
