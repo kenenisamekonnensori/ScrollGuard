@@ -95,12 +95,13 @@ const isTestEnvironment =
   typeof globalThis !== 'undefined' && 'jest' in globalThis;
 
 async function monitorTick(): Promise<void> {
+  await reconcileExpiredLocks();
+
   if (!hasActiveFocusSessions()) {
     return;
   }
 
   await refreshFocusSessions();
-  await reconcileExpiredLocks();
   useUsageStore.getState().setLastSyncedAt(Date.now());
 }
 
