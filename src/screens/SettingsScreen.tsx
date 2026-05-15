@@ -1,6 +1,6 @@
-import React, { useEffect } from 'react';
+import React, { useCallback } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { AppScreen } from '../components/ui/AppScreen';
 import { PrimaryButton } from '../components/ui/PrimaryButton';
 import { SectionCard } from '../components/ui/SectionCard';
@@ -94,25 +94,27 @@ export function SettingsScreen(): React.JSX.Element {
     updateLimit(key, nextValue);
   };
 
-  useEffect(() => {
-    refreshFocusSessions().catch(error => {
-      if (__DEV__) {
-        console.warn('[SettingsScreen] Initial focus-session refresh failed.', error);
-      }
-    });
-
-    const interval = setInterval(() => {
+  useFocusEffect(
+    useCallback(() => {
       refreshFocusSessions().catch(error => {
         if (__DEV__) {
-          console.warn('[SettingsScreen] Scheduled focus-session refresh failed.', error);
+          console.warn('[SettingsScreen] Initial focus-session refresh failed.', error);
         }
       });
-    }, ACTIVE_SESSIONS_REFRESH_MS);
 
-    return () => {
-      clearInterval(interval);
-    };
-  }, [refreshFocusSessions]);
+      const interval = setInterval(() => {
+        refreshFocusSessions().catch(error => {
+          if (__DEV__) {
+            console.warn('[SettingsScreen] Scheduled focus-session refresh failed.', error);
+          }
+        });
+      }, ACTIVE_SESSIONS_REFRESH_MS);
+
+      return () => {
+        clearInterval(interval);
+      };
+    }, [refreshFocusSessions]),
+  );
 
   const activeSessions = sessions.filter(session => session.status !== 'completed');
   const blockedSessionCount = activeSessions.filter(session => session.status === 'blocked').length;
