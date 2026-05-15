@@ -66,8 +66,9 @@ function cleanupExpiredLocks(lockStates: LockStateMap): LockStateMap {
 /**
  * Activates a lock for an app using current settings lock duration.
  */
-export async function blockApp(app: string): Promise<void> {
-  const lockDurationMinutes = useSettingsStore.getState().userSettings.lockDurationMinutes;
+export async function blockApp(app: string, durationMinutes?: number): Promise<void> {
+  const lockDurationMinutes =
+    durationMinutes ?? useSettingsStore.getState().userSettings.lockDurationMinutes;
   const lockedUntil = Date.now() + lockDurationMinutes * 60 * 1000;
 
   const lockStates = cleanupExpiredLocks(readLockStates());

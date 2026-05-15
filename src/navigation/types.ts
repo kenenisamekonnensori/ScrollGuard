@@ -7,7 +7,6 @@ export type MainTabParamList = {
 };
 
 export type RootStackParamList = {
-  SplashScreen: undefined;
   OnboardingScreen: undefined;
   PermissionsSetupScreen: undefined;
   MainTabs: undefined;

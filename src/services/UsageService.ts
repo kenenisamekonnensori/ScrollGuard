@@ -14,13 +14,24 @@ function normalizeUsageSeconds(value: number): number {
   return Math.floor(value);
 }
 
+function hasAnyMonitoredUsageKey(usageStats: Record<string, number>): boolean {
+  return MONITORED_PACKAGE_ALIAS_LIST.some(packageName =>
+    Object.prototype.hasOwnProperty.call(usageStats, packageName),
+  );
+}
+
 /**
  * Fetches today's usage from the native bridge, normalizes values,
  * and updates the global usage store.
  */
 export async function fetchTodayUsage(): Promise<Record<string, number>> {
   const usageStats = await getUsageStats();
-  const setUsageStats = useUsageStore.getState().setUsageStats;
+  const { setUsageStats } = useUsageStore.getState();
+
+  if (!hasAnyMonitoredUsageKey(usageStats)) {
+    throw new Error('Native usage snapshot did not include monitored package data.');
+  }
+
   const normalizedUsage: Record<string, number> = {};
 
   MONITORED_PACKAGE_LIST.forEach(packageName => {

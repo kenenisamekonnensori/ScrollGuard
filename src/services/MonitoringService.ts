@@ -3,11 +3,14 @@ import {
   DeviceEventEmitter,
   EmitterSubscription,
 } from 'react-native';
-import { evaluateUsageLimits } from '../features/limits/limitEngine';
 import { reconcileExpiredLocks } from '../features/blocking/blockingController';
-import { fetchTodayUsage } from './UsageService';
 import { scrollService } from './ScrollService';
 import { useUsageStore } from '../store/usageStore';
+import {
+  hasActiveFocusSessions,
+  hasTrackingFocusSessionForPackage,
+  refreshFocusSessions,
+} from '../features/focus/focusSessionStore';
 import {
   MONITORED_PACKAGE_ALIAS_LIST,
   resolveCanonicalPackageName,
@@ -93,8 +96,12 @@ const isTestEnvironment =
 
 async function monitorTick(): Promise<void> {
   await reconcileExpiredLocks();
-  await fetchTodayUsage();
-  await evaluateUsageLimits();
+
+  if (!hasActiveFocusSessions()) {
+    return;
+  }
+
+  await refreshFocusSessions();
   useUsageStore.getState().setLastSyncedAt(Date.now());
 }
 
@@ -265,6 +272,10 @@ function applyOptimisticForegroundSync(nextPackage: string, eventAtMs: number): 
   }
 
   if (previousPackage === nextPackage || !monitoredPackages.has(previousPackage)) {
+    return;
+  }
+
+  if (!hasTrackingFocusSessionForPackage(previousPackage)) {
     return;
   }
 

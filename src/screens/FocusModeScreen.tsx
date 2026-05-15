@@ -1,44 +1,65 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { useIsFocused, useNavigation } from '@react-navigation/native';
+import {
+  Animated,
+  type DimensionValue,
+  Easing,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { AppScreen } from '../components/ui/AppScreen';
 import { PrimaryButton } from '../components/ui/PrimaryButton';
 import { SectionCard } from '../components/ui/SectionCard';
-import {
-  getResolvedAppLocks,
-  ResolvedAppLock,
-} from '../features/blocking/blockingController';
+import { useFocusSessionStore } from '../features/focus/focusSessionStore';
+import { FocusSession } from '../features/focus/focusSessionTypes';
 import { refreshMonitoringNow } from '../services/MonitoringService';
-import { useSettingsStore } from '../store/settingsStore';
-import { useUsageStore } from '../store/usageStore';
 import { colors } from '../theme/tokens';
 import {
-  LIMIT_SETTING_KEYS,
-  MONITORED_PACKAGE_LIST,
+  MONITORED_PACKAGE_GROUPS,
   PACKAGE_ICONS,
   PACKAGE_LABELS,
+  MonitoredAppFamily,
 } from '../utils/appPackages';
-import { toMinutes } from '../utils/time';
 
-type AppFocusStatus = {
-  packageName: (typeof MONITORED_PACKAGE_LIST)[number];
+type AppOption = {
+  family: MonitoredAppFamily;
   appName: string;
-  usageMinutes: number;
-  limitMinutes: number;
-  remainingMinutes: number;
-  usagePercent: number;
-  isBlocked: boolean;
+  icon: string;
 };
 
-const DURATION_OPTIONS = [15, 30, 60, 120] as const;
+// Keep app choices in sync with monitored-package config so UI and tracking targets never drift.
+const APP_OPTIONS: AppOption[] = (Object.keys(MONITORED_PACKAGE_GROUPS) as MonitoredAppFamily[])
+  .map(family => {
+    const packageName = MONITORED_PACKAGE_GROUPS[family][0];
+    return {
+      family,
+      appName: PACKAGE_LABELS[packageName] ?? packageName,
+      icon: PACKAGE_ICONS[packageName] ?? '□',
+    };
+  });
 
-function formatRemainingMinutes(minutes: number): string {
-  return `${Math.max(minutes, 0)} min`;
+const USAGE_DURATION_OPTIONS = [5, 10, 15, 20, 30, 45] as const;
+const BLOCK_DURATION_OPTIONS = [10, 15, 30, 45, 60, 90] as const;
+const ACTIVE_SESSION_STATUSES: FocusSession['status'][] = ['tracking', 'blocked'];
+const ACTIVE_POLL_INTERVAL_MS = 5_000;
+const IDLE_POLL_INTERVAL_MS = 30_000;
+
+function formatMinutesFromSeconds(seconds: number): string {
+  const minutes = Math.max(Math.ceil(seconds / 60), 0);
+  if (minutes >= 60) {
+    const hours = Math.floor(minutes / 60);
+    const remainder = minutes % 60;
+    return remainder > 0 ? `${hours}h ${remainder}m` : `${hours}h`;
+  }
+
+  return `${minutes}m`;
 }
 
-function formatClockTime(timestamp: number | null): string {
+function formatClock(timestamp: number | null): string {
   if (!timestamp) {
-    return 'native protection active';
+    return 'Active';
   }
 
   return new Date(timestamp).toLocaleTimeString([], {
@@ -47,377 +68,819 @@ function formatClockTime(timestamp: number | null): string {
   });
 }
 
+function getRemainingBlockSeconds(session: FocusSession, nowMs: number): number {
+  if (session.status !== 'blocked' || !session.blockedUntil) {
+    return 0;
+  }
+
+  return Math.max(Math.ceil((session.blockedUntil - nowMs) / 1000), 0);
+}
+
+function getUsageProgress(session: FocusSession): number {
+  if (session.allowedUsageSeconds <= 0) {
+    return 1;
+  }
+
+  return Math.min(session.consumedUsageSeconds / session.allowedUsageSeconds, 1);
+}
+
+function isActiveSession(session: FocusSession): boolean {
+  return ACTIVE_SESSION_STATUSES.includes(session.status);
+}
+
+function SessionStatusBadge({
+  session,
+  isDark,
+}: {
+  session: FocusSession;
+  isDark: boolean;
+}): React.JSX.Element {
+  // Centralized visual mapping keeps badge labels/colors consistent everywhere cards are rendered.
+  const statusStyles = {
+    tracking: {
+      label: 'Tracking',
+      badgeStyle: isDark ? styles.statusBadgeTrackingDark : styles.statusBadgeTrackingLight,
+      textStyle: isDark ? styles.statusBadgeTextTrackingDark : styles.statusBadgeTextTrackingLight,
+    },
+    blocked: {
+      label: 'Blocked',
+      badgeStyle: isDark ? styles.statusBadgeBlockedDark : styles.statusBadgeBlockedLight,
+      textStyle: isDark ? styles.statusBadgeTextBlockedDark : styles.statusBadgeTextBlockedLight,
+    },
+    completed: {
+      label: 'Completed',
+      badgeStyle: isDark ? styles.statusBadgeCompletedDark : styles.statusBadgeCompletedLight,
+      textStyle: isDark ? styles.statusBadgeTextCompletedDark : styles.statusBadgeTextCompletedLight,
+    },
+    idle: {
+      label: 'Idle',
+      badgeStyle: isDark ? styles.statusBadgeIdleDark : styles.statusBadgeIdleLight,
+      textStyle: isDark ? styles.statusBadgeTextIdleDark : styles.statusBadgeTextIdleLight,
+    },
+  }[session.status];
+
+  return (
+    <View style={[styles.statusBadge, statusStyles.badgeStyle]}>
+      <Text style={[styles.statusBadgeText, statusStyles.textStyle]}>
+        {statusStyles.label}
+      </Text>
+    </View>
+  );
+}
+
+function FocusSessionCard({
+  session,
+  nowMs,
+  isDark,
+  isEnding,
+  onComplete,
+}: {
+  session: FocusSession;
+  nowMs: number;
+  isDark: boolean;
+  isEnding: boolean;
+  onComplete: (sessionId: string) => void;
+}): React.JSX.Element {
+  // Card-level derived values are memoized so each poll tick only updates what changed.
+  const progress = getUsageProgress(session);
+  const remainingUsageSeconds = Math.max(
+    session.allowedUsageSeconds - session.consumedUsageSeconds,
+    0,
+  );
+  const remainingBlockSeconds = getRemainingBlockSeconds(session, nowMs);
+  const progressWidthStyle = React.useMemo(
+    () => ({
+      width: `${Math.max(progress * 100, session.status === 'tracking' ? 4 : 0)}%` as DimensionValue,
+    }),
+    [progress, session.status],
+  );
+
+  return (
+    <View style={[styles.sessionCard, isDark ? styles.sessionCardDark : styles.sessionCardLight]}>
+      <View style={styles.sessionHeader}>
+        <View style={styles.sessionIdentity}>
+          <View style={[styles.sessionIcon, isDark ? styles.sessionIconDark : styles.sessionIconLight]}>
+            <Text style={styles.sessionIconText}>{PACKAGE_ICONS[session.packageName] ?? '□'}</Text>
+          </View>
+          <View style={styles.sessionTitleWrap}>
+            <Text style={[styles.sessionTitle, isDark ? styles.sessionTitleDark : styles.sessionTitleLight]}>
+              {session.appName}
+            </Text>
+            <Text style={[styles.sessionMeta, isDark ? styles.sessionMetaDark : styles.sessionMetaLight]}>
+              Started {formatClock(session.startedAt)}
+            </Text>
+          </View>
+        </View>
+        <SessionStatusBadge session={session} isDark={isDark} />
+      </View>
+
+      <View style={styles.metricGrid}>
+        <View style={[styles.metricTile, isDark ? styles.metricTileDark : styles.metricTileLight]}>
+          <Text style={[styles.metricValue, isDark ? styles.metricValueDark : styles.metricValueLight]}>
+            {formatMinutesFromSeconds(remainingUsageSeconds)}
+          </Text>
+          <Text style={[styles.metricLabel, isDark ? styles.metricLabelDark : styles.metricLabelLight]}>
+            usage left
+          </Text>
+        </View>
+        <View style={[styles.metricTile, isDark ? styles.metricTileDark : styles.metricTileLight]}>
+          <Text style={[styles.metricValue, isDark ? styles.metricValueDark : styles.metricValueLight]}>
+            {session.status === 'blocked'
+              ? formatMinutesFromSeconds(remainingBlockSeconds)
+              : formatMinutesFromSeconds(session.blockDurationSeconds)}
+          </Text>
+          <Text style={[styles.metricLabel, isDark ? styles.metricLabelDark : styles.metricLabelLight]}>
+            {session.status === 'blocked' ? 'block left' : 'block length'}
+          </Text>
+        </View>
+      </View>
+
+      <View style={[styles.progressTrack, isDark ? styles.progressTrackDark : styles.progressTrackLight]}>
+        <View
+          style={[
+            styles.progressFill,
+            session.status === 'blocked' ? styles.progressFillBlocked : styles.progressFillTracking,
+            progressWidthStyle,
+          ]}
+        />
+      </View>
+
+      <View style={styles.sessionFooter}>
+        <Text style={[styles.sessionMeta, isDark ? styles.sessionMetaDark : styles.sessionMetaLight]}>
+          {session.status === 'blocked'
+            ? `Unlocks at ${formatClock(session.blockedUntil)}`
+            : `${formatMinutesFromSeconds(session.consumedUsageSeconds)} used`}
+        </Text>
+        {session.status !== 'completed' ? (
+          <Pressable disabled={isEnding} onPress={() => onComplete(session.id)} hitSlop={8}>
+            <Text style={styles.stopText}>End</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+function OptionChip<T extends number>({
+  value,
+  selected,
+  label,
+  onPress,
+  isDark,
+}: {
+  value: T;
+  selected: boolean;
+  label: string;
+  onPress: (value: T) => void;
+  isDark: boolean;
+}): React.JSX.Element {
+  // These chips are reused for both usage and block-duration selectors.
+  const chipStyle = selected
+    ? styles.optionChipSelected
+    : isDark
+      ? styles.optionChipDark
+      : styles.optionChipLight;
+  const chipTextStyle = selected
+    ? styles.optionChipTextSelected
+    : isDark
+      ? styles.optionChipTextDark
+      : styles.optionChipTextLight;
+
+  return (
+    <Pressable onPress={() => onPress(value)} style={[styles.optionChip, chipStyle]}>
+      <Text style={[styles.optionChipText, chipTextStyle]}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
 export function FocusModeScreen(): React.JSX.Element {
-  const navigation = useNavigation<any>();
-  const isFocused = useIsFocused();
+  const isDark = false;
+  const sessions = useFocusSessionStore(state => state.sessions);
+  const startFocusSession = useFocusSessionStore(state => state.startFocusSession);
+  const refreshFocusSessions = useFocusSessionStore(state => state.refreshFocusSessions);
+  const completeSession = useFocusSessionStore(state => state.completeSession);
+  const lastError = useFocusSessionStore(state => state.lastError);
+  const [selectedFamily, setSelectedFamily] = React.useState<MonitoredAppFamily>('instagram');
+  const [allowedUsageMinutes, setAllowedUsageMinutes] = React.useState(15);
+  const [blockDurationMinutes, setBlockDurationMinutes] = React.useState(30);
   const [nowMs, setNowMs] = React.useState(() => Date.now());
-  const [activeLocks, setActiveLocks] = React.useState<ResolvedAppLock[]>([]);
-  const usageStats = useUsageStore(state => state.usageStats);
-  const lastSyncedAt = useUsageStore(state => state.lastSyncedAt);
-  const userSettings = useSettingsStore(state => state.userSettings);
-  const updateLimit = useSettingsStore(state => state.updateLimit);
+  const [isStarting, setIsStarting] = React.useState(false);
+  const [sessionActionError, setSessionActionError] = React.useState<string | null>(null);
+  const [endingSessionIds, setEndingSessionIds] = React.useState<string[]>([]);
+  const fadeValue = React.useRef(new Animated.Value(0)).current;
+  const fadeInStyle = React.useMemo(() => ({ opacity: fadeValue }), [fadeValue]);
 
-  const refreshLocks = React.useCallback(async (): Promise<void> => {
-    try {
-      const resolvedLocks = await getResolvedAppLocks();
-      setActiveLocks(resolvedLocks);
-    } catch (error) {
-      if (__DEV__) {
-        console.warn('[FocusModeScreen] Failed to resolve active locks.', error);
-      }
-      setActiveLocks([]);
-    }
-  }, []);
-
+  // Simple one-time entry animation to make the hero/status area feel less abrupt.
   React.useEffect(() => {
-    if (!isFocused) {
-      return;
-    }
+    Animated.timing(fadeValue, {
+      toValue: 1,
+      duration: 360,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [fadeValue]);
 
-    setNowMs(Date.now());
+  const activeSessions = React.useMemo(
+    () => sessions.filter(isActiveSession),
+    [sessions],
+  );
+  const hasAnyActiveSession = activeSessions.length > 0;
 
-    refreshMonitoringNow().catch(error => {
-      if (__DEV__) {
-        console.warn('[FocusModeScreen] Initial focus refresh failed.', error);
-      }
-    });
-    refreshLocks().catch(error => {
-      if (__DEV__) {
-        console.warn('[FocusModeScreen] Initial lock refresh failed.', error);
-      }
-    });
-
-    const secondTickTimer = setInterval(() => {
+  // Keep UI polling scoped to screen focus so hidden tabs do not continue background refresh work.
+  useFocusEffect(
+    React.useCallback(() => {
       setNowMs(Date.now());
-    }, 1_000);
-
-    const refreshTimer = setInterval(() => {
-      refreshLocks().catch(error => {
+      refreshFocusSessions().catch(error => {
         if (__DEV__) {
-          console.warn('[FocusModeScreen] Scheduled lock refresh failed.', error);
+          console.warn('[FocusModeScreen] Failed to refresh focus sessions.', error);
         }
       });
-    }, 5_000);
 
-    return () => {
-      clearInterval(secondTickTimer);
-      clearInterval(refreshTimer);
-    };
-  }, [isFocused, refreshLocks]);
+      const pollIntervalMs = hasAnyActiveSession ? ACTIVE_POLL_INTERVAL_MS : IDLE_POLL_INTERVAL_MS;
+      const timer = setInterval(() => {
+        setNowMs(Date.now());
+        refreshFocusSessions().catch(error => {
+          if (__DEV__) {
+            console.warn('[FocusModeScreen] Scheduled focus refresh failed.', error);
+          }
+        });
+      }, pollIntervalMs);
 
-  const appStatuses: AppFocusStatus[] = MONITORED_PACKAGE_LIST.map(packageName => {
-    const appName = PACKAGE_LABELS[packageName] ?? packageName;
-    const usageMinutes = toMinutes(usageStats[packageName] ?? 0);
-    const limitKey = LIMIT_SETTING_KEYS[packageName];
-    const limitMinutes = userSettings[limitKey];
-    const remainingMinutes = Math.max(limitMinutes - usageMinutes, 0);
-    const usagePercent = limitMinutes > 0 ? Math.min((usageMinutes / limitMinutes) * 100, 100) : 0;
+      return () => {
+        clearInterval(timer);
+      };
+    }, [hasAnyActiveSession, refreshFocusSessions]),
+  );
 
-    return {
-      packageName,
-      appName,
-      usageMinutes,
-      limitMinutes,
-      remainingMinutes,
-      usagePercent,
-      isBlocked: activeLocks.some(lock => lock.packageName === packageName),
-    };
-  }).sort((first, second) => second.usagePercent - first.usagePercent);
-
-  const shortestActiveLock = activeLocks[0];
-  const mostAtRisk = appStatuses[0];
-  const syncLabel = lastSyncedAt
-    ? new Date(lastSyncedAt).toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit',
+  // Completed list is sorted by completion timestamp so "Recent Completions" is always accurate.
+  const completedSessions = React.useMemo(
+    () => sessions
+      .filter(session => session.status === 'completed')
+      .sort((left, right) => {
+        const leftCompletedAt = left.completedAt ?? left.updatedAt;
+        const rightCompletedAt = right.completedAt ?? right.updatedAt;
+        return rightCompletedAt - leftCompletedAt;
       })
-    : 'Not synced yet';
+      .slice(0, 3),
+    [sessions],
+  );
+  const hasActiveSelectedApp = activeSessions.some(session => session.appFamily === selectedFamily);
 
-  const heroTitle = activeLocks.length > 0 ? 'Focus Active' : 'Focus Ready';
-  const heroValue = activeLocks.length > 0
-    ? formatRemainingMinutes(
-        shortestActiveLock?.lockedUntil
-          ? Math.max(Math.ceil((shortestActiveLock.lockedUntil - nowMs) / 60_000), 0)
-          : 0,
-      )
-    : formatRemainingMinutes(mostAtRisk?.remainingMinutes ?? 0);
-  const heroSub = activeLocks.length > 0
-    ? `${shortestActiveLock?.appName ?? 'App'} is blocked until ${formatClockTime(shortestActiveLock?.lockedUntil ?? null)}`
-    : mostAtRisk
-      ? `${mostAtRisk.appName} has ${mostAtRisk.remainingMinutes} min left before lock`
-      : 'No monitored app usage yet';
+  const handleStartFocus = React.useCallback((): void => {
+    setSessionActionError(null);
+    setIsStarting(true);
+    startFocusSession({
+      appFamily: selectedFamily,
+      allowedUsageMinutes,
+      blockDurationMinutes,
+    })
+      .then(() => refreshMonitoringNow())
+      .catch(error => {
+        const message = error instanceof Error ? error.message : 'Unable to start focus session.';
+        setSessionActionError(message);
+      })
+      .finally(() => {
+        setIsStarting(false);
+      });
+  }, [allowedUsageMinutes, blockDurationMinutes, selectedFamily, startFocusSession]);
+
+  const handleCompleteSession = React.useCallback((sessionId: string): void => {
+    setSessionActionError(null);
+    setEndingSessionIds(previous => (previous.includes(sessionId) ? previous : [...previous, sessionId]));
+    completeSession(sessionId)
+      .then(() => refreshMonitoringNow())
+      .catch(error => {
+        const message = error instanceof Error ? error.message : 'Unable to end focus session.';
+        setSessionActionError(message);
+        if (__DEV__) {
+          console.warn('[FocusModeScreen] Failed to end focus session.', error);
+        }
+      })
+      .finally(() => {
+        setEndingSessionIds(previous => previous.filter(id => id !== sessionId));
+      });
+  }, [completeSession]);
 
   return (
     <AppScreen
-      title="Focus Mode"
-      subtitle="Create intentional sessions that block high-distraction apps while you work.">
-      <View style={styles.heroCard}>
-        <Text style={styles.heroEyebrow}>{heroTitle.toUpperCase()}</Text>
-        <Text style={styles.heroValue}>{heroValue}</Text>
-        <Text style={styles.heroText}>{heroSub}</Text>
-        <Text style={styles.heroMeta}>Last sync: {syncLabel}</Text>
-      </View>
+      title="Focus"
+      subtitle="Start a focus session manually, then ScrollGuard tracks only that app until the session completes.">
+      <Animated.View style={fadeInStyle}>
+        <View style={[styles.hero, isDark ? styles.heroDark : styles.heroLight]}>
+          <View>
+            <Text style={[styles.heroEyebrow, isDark ? styles.heroEyebrowDark : styles.heroEyebrowLight]}>
+              MANUAL FOCUS
+            </Text>
+            <Text style={[styles.heroTitle, isDark ? styles.heroTitleDark : styles.heroTitleLight]}>
+              {activeSessions.length} active session{activeSessions.length === 1 ? '' : 's'}
+            </Text>
+          </View>
+          <View style={[styles.heroOrb, isDark ? styles.heroOrbDark : styles.heroOrbLight]}>
+            <Text style={styles.heroOrbText}>◎</Text>
+          </View>
+        </View>
+      </Animated.View>
 
-      <SectionCard title="Set Focus Duration">
-        <View style={styles.durationRow}>
-          {DURATION_OPTIONS.map(option => {
-            const selected = option === userSettings.lockDurationMinutes;
+      <SectionCard title="Choose App">
+        <View style={styles.appSelectionGrid}>
+          {APP_OPTIONS.map(option => {
+            const selected = option.family === selectedFamily;
+            const active = activeSessions.some(session => session.appFamily === option.family);
+
             return (
               <Pressable
-                key={option}
-                onPress={() => updateLimit('lockDurationMinutes', option)}
-                style={[styles.durationChip, selected ? styles.durationChipActive : null]}>
-                <Text style={[styles.durationLabel, selected ? styles.durationLabelActive : null]}>
-                  {option}
+                key={option.family}
+                onPress={() => setSelectedFamily(option.family)}
+                style={[
+                  styles.appOption,
+                  selected
+                    ? isDark
+                      ? styles.appOptionSelectedDark
+                      : styles.appOptionSelectedLight
+                    : isDark
+                      ? styles.appOptionIdleDark
+                      : styles.appOptionIdleLight,
+                ]}>
+                <Text style={styles.appOptionIcon}>{option.icon}</Text>
+                <Text style={[styles.appOptionName, isDark ? styles.appOptionNameDark : styles.appOptionNameLight]}>
+                  {option.appName}
                 </Text>
-                <Text style={[styles.durationMeta, selected ? styles.durationMetaActive : null]}>
-                  mins
-                </Text>
+                {active ? <Text style={styles.appOptionActive}>Active</Text> : null}
               </Pressable>
             );
           })}
         </View>
-        <Text style={styles.sectionHint}>
-          Tap a duration to update focus protection instantly. Settings stays in sync automatically.
+      </SectionCard>
+
+      <SectionCard title="Session Setup">
+        <Text style={[styles.configLabel, isDark ? styles.configLabelDark : styles.configLabelLight]}>
+          Allowed usage before block
         </Text>
+        <View style={styles.chipWrap}>
+          {USAGE_DURATION_OPTIONS.map(value => (
+            <OptionChip
+              key={`usage-${value}`}
+              value={value}
+              selected={allowedUsageMinutes === value}
+              label={`${value}m`}
+              onPress={setAllowedUsageMinutes}
+              isDark={isDark}
+            />
+          ))}
+        </View>
+
+        <Text style={[styles.configLabel, isDark ? styles.configLabelDark : styles.configLabelLight]}>
+          Block duration
+        </Text>
+        <View style={styles.chipWrap}>
+          {BLOCK_DURATION_OPTIONS.map(value => (
+            <OptionChip
+              key={`block-${value}`}
+              value={value}
+              selected={blockDurationMinutes === value}
+              label={`${value}m`}
+              onPress={setBlockDurationMinutes}
+              isDark={isDark}
+            />
+          ))}
+        </View>
+
+        {sessionActionError || lastError ? (
+          <Text style={styles.errorText}>{sessionActionError ?? lastError}</Text>
+        ) : null}
+
+        <PrimaryButton
+          label={hasActiveSelectedApp ? 'Session Already Active' : 'Start Focus'}
+          onPress={handleStartFocus}
+          disabled={hasActiveSelectedApp || isStarting}
+        />
       </SectionCard>
 
-      <SectionCard title="Apps to Protect">
-        {appStatuses.map(status => (
-          <View key={status.packageName} style={styles.appRow}>
-            <View style={styles.appLeft}>
-              <View style={styles.appIconWrap}>
-                <Text style={styles.appIcon}>{PACKAGE_ICONS[status.packageName] ?? '📱'}</Text>
-              </View>
-              <View style={styles.appCopy}>
-                <Text style={styles.appName}>{status.appName}</Text>
-                <Text style={styles.appSub}>
-                  {status.usageMinutes}/{status.limitMinutes} min used
-                </Text>
-              </View>
-            </View>
-            <View
-              style={[
-                styles.statusBadge,
-                status.isBlocked ? styles.statusBadgeDanger : styles.statusBadgeSafe,
-              ]}>
-              <Text
-                style={[
-                  styles.statusBadgeText,
-                  status.isBlocked ? styles.statusBadgeTextDanger : styles.statusBadgeTextSafe,
-                ]}>
-                {status.isBlocked ? 'Blocked' : `${status.remainingMinutes} min left`}
-              </Text>
-            </View>
+      <SectionCard title="Active Focus">
+        {activeSessions.length > 0 ? (
+          <View style={styles.sessionList}>
+            {activeSessions.map(session => (
+              <FocusSessionCard
+                key={session.id}
+                session={session}
+                nowMs={nowMs}
+                isDark={isDark}
+                isEnding={endingSessionIds.includes(session.id)}
+                onComplete={handleCompleteSession}
+              />
+            ))}
           </View>
-        ))}
-      </SectionCard>
-
-      <SectionCard title="Blocked Apps">
-        {activeLocks.length > 0 ? (
-          activeLocks.map(lock => (
-            <View key={lock.packageName} style={styles.lockRow}>
-              <Text style={styles.lockName}>{lock.appName}</Text>
-              <Text style={styles.lockMeta}>
-                {lock.lockedUntil
-                  ? `${formatRemainingMinutes(
-                      Math.max(Math.ceil((lock.lockedUntil - nowMs) / 60_000), 0),
-                    )} left • until ${formatClockTime(lock.lockedUntil)}`
-                  : 'Blocked by native protection service'}
-              </Text>
-            </View>
-          ))
         ) : (
-          <Text style={styles.emptyText}>No apps are currently blocked.</Text>
+          <Text style={[styles.emptyText, isDark ? styles.emptyTextDark : styles.emptyTextLight]}>
+            No focus sessions are running. Choose an app and start one manually.
+          </Text>
         )}
       </SectionCard>
 
-      <PrimaryButton
-        label="Refresh Focus Data"
-        onPress={() => {
-          refreshMonitoringNow().catch(error => {
-            if (__DEV__) {
-              console.warn('[FocusModeScreen] Failed to refresh focus data.', error);
-            }
-          });
-          refreshLocks().catch(error => {
-            if (__DEV__) {
-              console.warn('[FocusModeScreen] Failed to refresh lock state.', error);
-            }
-          });
-        }}
-      />
-      <PrimaryButton
-        label="Customize Rules"
-        variant="secondary"
-        onPress={() => navigation.navigate('SettingsScreen')}
-      />
+      {completedSessions.length > 0 ? (
+        <SectionCard title="Recent Completions">
+          {completedSessions.map(session => (
+            <View key={session.id} style={styles.completedRow}>
+              <Text style={[styles.completedName, isDark ? styles.completedNameDark : styles.completedNameLight]}>
+                {session.appName}
+              </Text>
+              <Text style={[styles.sessionMeta, isDark ? styles.sessionMetaDark : styles.sessionMetaLight]}>
+                {formatMinutesFromSeconds(session.consumedUsageSeconds)} used
+              </Text>
+            </View>
+          ))}
+        </SectionCard>
+      ) : null}
     </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  heroCard: {
-    borderRadius: 28,
+  hero: {
+    minHeight: 112,
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: '#BEEAF5',
-    backgroundColor: '#EAFBFF',
-    paddingHorizontal: 20,
-    paddingVertical: 24,
+    padding: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 4,
-    shadowColor: '#0EA5E9',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.12,
-    shadowRadius: 18,
-    elevation: 3,
+    marginBottom: 10,
+  },
+  heroDark: {
+    backgroundColor: '#101827',
+    borderColor: '#263244',
+  },
+  heroLight: {
+    backgroundColor: '#EAFBFF',
+    borderColor: '#BEEAF5',
   },
   heroEyebrow: {
-    color: '#22B8D6',
     fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 1.2,
-  },
-  heroValue: {
-    color: '#0B1330',
-    fontSize: 44,
     fontWeight: '900',
-    letterSpacing: -1.6,
+    letterSpacing: 1,
+    marginBottom: 6,
   },
-  heroText: {
-    color: colors.textMuted,
-    fontSize: 14,
-    textAlign: 'center',
-    lineHeight: 20,
+  heroEyebrowDark: {
+    color: '#67E8F9',
   },
-  heroMeta: {
-    color: '#7C8CA5',
-    fontSize: 12,
-    fontWeight: '600',
+  heroEyebrowLight: {
+    color: colors.primaryDark,
   },
-  durationRow: {
-    flexDirection: 'row',
-    gap: 10,
-    flexWrap: 'wrap',
+  heroTitle: {
+    fontSize: 30,
+    fontWeight: '900',
+    letterSpacing: 0,
   },
-  durationChip: {
-    flex: 1,
-    minWidth: 64,
-    borderRadius: 18,
-    backgroundColor: '#EDF9FC',
-    borderWidth: 1,
-    borderColor: '#D5EEF4',
-    paddingVertical: 12,
-    alignItems: 'center',
+  heroTitleDark: {
+    color: '#F8FAFC',
   },
-  durationChipActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 3,
-  },
-  durationLabel: {
+  heroTitleLight: {
     color: '#0B1330',
-    fontSize: 18,
-    fontWeight: '800',
   },
-  durationLabelActive: {
-    color: colors.white,
-  },
-  durationMeta: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  durationMetaActive: {
-    color: '#D8FAFF',
-  },
-  sectionHint: {
-    color: colors.textMuted,
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  appRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#ECF3F6',
-  },
-  appLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flex: 1,
-  },
-  appIconWrap: {
-    width: 46,
-    height: 46,
-    borderRadius: 16,
-    backgroundColor: '#F4FBFD',
+  heroOrb: {
+    width: 58,
+    height: 58,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  appIcon: {
-    fontSize: 18,
+  heroOrbDark: {
+    backgroundColor: '#050B13',
   },
-  appCopy: {
+  heroOrbLight: {
+    backgroundColor: colors.background,
+  },
+  heroOrbText: {
+    fontSize: 28,
+    color: colors.primaryDark,
+    fontWeight: '900',
+  },
+  appSelectionGrid: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  appOption: {
     flex: 1,
+    minHeight: 104,
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 12,
+    justifyContent: 'space-between',
   },
-  appName: {
-    color: '#0B1330',
-    fontSize: 15,
+  appOptionSelectedDark: {
+    backgroundColor: '#1E3A44',
+    borderColor: colors.primary,
+  },
+  appOptionSelectedLight: {
+    backgroundColor: '#DDF7FD',
+    borderColor: colors.primary,
+  },
+  appOptionIdleDark: {
+    backgroundColor: '#111827',
+    borderColor: '#263244',
+  },
+  appOptionIdleLight: {
+    backgroundColor: '#F8FAFC',
+    borderColor: '#E2E8F0',
+  },
+  appOptionIcon: {
+    fontSize: 24,
+  },
+  appOptionName: {
+    fontSize: 13,
     fontWeight: '800',
   },
-  appSub: {
-    color: colors.textMuted,
+  appOptionNameDark: {
+    color: '#F8FAFC',
+  },
+  appOptionNameLight: {
+    color: '#0B1330',
+  },
+  appOptionActive: {
+    color: colors.primaryDark,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  configLabel: {
+    fontSize: 13,
+    fontWeight: '800',
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  configLabelDark: {
+    color: '#CBD5E1',
+  },
+  configLabelLight: {
+    color: '#475569',
+  },
+  chipWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 8,
+  },
+  optionChip: {
+    minWidth: 62,
+    minHeight: 42,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  optionChipSelected: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  optionChipDark: {
+    backgroundColor: '#172033',
+    borderColor: '#263244',
+  },
+  optionChipLight: {
+    backgroundColor: '#F8FAFC',
+    borderColor: '#E2E8F0',
+  },
+  optionChipText: {
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  optionChipTextSelected: {
+    color: '#FFFFFF',
+  },
+  optionChipTextDark: {
+    color: '#E2E8F0',
+  },
+  optionChipTextLight: {
+    color: '#0B1330',
+  },
+  sessionList: {
+    gap: 12,
+  },
+  sessionCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 14,
+    gap: 14,
+  },
+  sessionCardDark: {
+    backgroundColor: '#111827',
+    borderColor: '#263244',
+  },
+  sessionCardLight: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E5EDF5',
+  },
+  sessionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  sessionIdentity: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  sessionIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sessionIconDark: {
+    backgroundColor: '#1F2937',
+  },
+  sessionIconLight: {
+    backgroundColor: '#EAF8FC',
+  },
+  sessionIconText: {
+    fontSize: 22,
+  },
+  sessionTitleWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  sessionTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  sessionTitleDark: {
+    color: '#F8FAFC',
+  },
+  sessionTitleLight: {
+    color: '#0B1330',
+  },
+  sessionMeta: {
     fontSize: 12,
-    marginTop: 2,
+    fontWeight: '600',
+  },
+  sessionMetaDark: {
+    color: '#94A3B8',
+  },
+  sessionMetaLight: {
+    color: '#64748B',
   },
   statusBadge: {
+    alignSelf: 'flex-start',
     borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
   },
-  statusBadgeSafe: {
-    backgroundColor: '#EFFAFE',
+  statusBadgeTrackingDark: {
+    backgroundColor: '#123342',
   },
-  statusBadgeDanger: {
-    backgroundColor: '#FFF4E8',
+  statusBadgeTrackingLight: {
+    backgroundColor: '#DDF7FD',
+  },
+  statusBadgeBlockedDark: {
+    backgroundColor: '#421B1B',
+  },
+  statusBadgeBlockedLight: {
+    backgroundColor: '#FEE2E2',
+  },
+  statusBadgeCompletedDark: {
+    backgroundColor: '#123323',
+  },
+  statusBadgeCompletedLight: {
+    backgroundColor: '#DCFCE7',
+  },
+  statusBadgeIdleDark: {
+    backgroundColor: '#262B35',
+  },
+  statusBadgeIdleLight: {
+    backgroundColor: '#EEF2F7',
   },
   statusBadgeText: {
-    fontSize: 12,
-    fontWeight: '800',
+    fontSize: 11,
+    fontWeight: '900',
   },
-  statusBadgeTextSafe: {
-    color: '#0C6B86',
+  statusBadgeTextTrackingDark: {
+    color: '#67E8F9',
   },
-  statusBadgeTextDanger: {
-    color: '#C97415',
+  statusBadgeTextTrackingLight: {
+    color: '#087B91',
   },
-  lockRow: {
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#ECF3F6',
-    gap: 2,
+  statusBadgeTextBlockedDark: {
+    color: '#FCA5A5',
   },
-  lockName: {
+  statusBadgeTextBlockedLight: {
+    color: '#B91C1C',
+  },
+  statusBadgeTextCompletedDark: {
+    color: '#86EFAC',
+  },
+  statusBadgeTextCompletedLight: {
+    color: '#15803D',
+  },
+  statusBadgeTextIdleDark: {
+    color: '#CBD5E1',
+  },
+  statusBadgeTextIdleLight: {
+    color: '#475569',
+  },
+  metricGrid: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  metricTile: {
+    flex: 1,
+    minHeight: 76,
+    borderRadius: 16,
+    padding: 12,
+    justifyContent: 'center',
+  },
+  metricTileDark: {
+    backgroundColor: '#172033',
+  },
+  metricTileLight: {
+    backgroundColor: '#F8FAFC',
+  },
+  metricValue: {
+    fontSize: 22,
+    fontWeight: '900',
+  },
+  metricValueDark: {
+    color: '#F8FAFC',
+  },
+  metricValueLight: {
     color: '#0B1330',
-    fontSize: 14,
-    fontWeight: '800',
   },
-  lockMeta: {
-    color: colors.textMuted,
+  metricLabel: {
     fontSize: 12,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  metricLabelDark: {
+    color: '#94A3B8',
+  },
+  metricLabelLight: {
+    color: '#64748B',
+  },
+  progressTrack: {
+    height: 10,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  progressTrackDark: {
+    backgroundColor: '#263244',
+  },
+  progressTrackLight: {
+    backgroundColor: '#E2E8F0',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 999,
+  },
+  progressFillTracking: {
+    backgroundColor: colors.primary,
+  },
+  progressFillBlocked: {
+    backgroundColor: colors.danger,
+  },
+  sessionFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  stopText: {
+    color: colors.danger,
+    fontSize: 13,
+    fontWeight: '900',
   },
   emptyText: {
-    color: colors.textMuted,
     fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '600',
+  },
+  emptyTextDark: {
+    color: '#94A3B8',
+  },
+  emptyTextLight: {
+    color: '#64748B',
+  },
+  errorText: {
+    color: colors.danger,
+    fontSize: 13,
+    fontWeight: '700',
+    marginVertical: 8,
+  },
+  completedRow: {
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  completedName: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  completedNameDark: {
+    color: '#F8FAFC',
+  },
+  completedNameLight: {
+    color: '#0B1330',
   },
 });

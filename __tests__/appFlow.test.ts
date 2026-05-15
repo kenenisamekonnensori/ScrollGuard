@@ -1,8 +1,12 @@
 import {
   hasCompletedOnboarding,
+  getLastActiveAt,
+  RECENT_INACTIVITY_THRESHOLD_MS,
   resolveProtectedEntryRoute,
   resolveStartupRoute,
+  setLastActiveAt,
   setOnboardingCompleted,
+  shouldShowSplashAfterInactivity,
 } from '../src/utils/appFlow';
 import { getPermissionSnapshot } from '../src/native/NativeBridgeService';
 
@@ -72,6 +76,29 @@ describe('appFlow', () => {
     expect(hasCompletedOnboarding()).toBe(false);
     setOnboardingCompleted(true);
     expect(hasCompletedOnboarding()).toBe(true);
+  });
+
+  test('detects users returning after the inactivity threshold', () => {
+    const nowMs = 10_000_000;
+
+    expect(shouldShowSplashAfterInactivity(undefined, nowMs)).toBe(false);
+    expect(
+      shouldShowSplashAfterInactivity(
+        nowMs - RECENT_INACTIVITY_THRESHOLD_MS + 1,
+        nowMs,
+      ),
+    ).toBe(false);
+    expect(
+      shouldShowSplashAfterInactivity(
+        nowMs - RECENT_INACTIVITY_THRESHOLD_MS,
+        nowMs,
+      ),
+    ).toBe(true);
+  });
+
+  test('persists the last active timestamp', () => {
+    setLastActiveAt(12345);
+    expect(getLastActiveAt()).toBe(12345);
   });
 
   test('routes incomplete users to onboarding on startup', async () => {

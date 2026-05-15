@@ -1,42 +1,9 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
 import { Screen } from '../components/Screen';
 import { colors } from '../theme/tokens';
-import { resolveStartupRoute } from '../utils/appFlow';
 
-export function SplashScreen(): React.JSX.Element {
-  const navigation = useNavigation<any>();
-
-  useEffect(() => {
-    let isActive = true;
-
-    const timeout = setTimeout(() => {
-      resolveStartupRoute()
-        .then(nextRoute => {
-          if (!isActive) {
-            return;
-          }
-
-          navigation.replace(nextRoute);
-        })
-        .catch(error => {
-          if (__DEV__) {
-            console.warn('[SplashScreen] Failed to resolve startup route.', error);
-          }
-
-          if (isActive) {
-            navigation.replace('OnboardingScreen');
-          }
-        });
-    }, 1100);
-
-    return () => {
-      isActive = false;
-      clearTimeout(timeout);
-    };
-  }, [navigation]);
-
+export function StartupSplash(): React.JSX.Element {
   return (
     <Screen style={styles.container}>
       <View style={styles.topBar} />
@@ -50,6 +17,10 @@ export function SplashScreen(): React.JSX.Element {
       </View>
     </Screen>
   );
+}
+
+export function SplashScreen(): React.JSX.Element {
+  return <StartupSplash />;
 }
 
 const styles = StyleSheet.create({

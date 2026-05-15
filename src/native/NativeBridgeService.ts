@@ -64,12 +64,18 @@ export type PermissionStatusSnapshot = {
   allRequiredPermissionsEnabled: boolean;
 };
 
-const { AppUsageModule, ScrollDetectionModule, AppBlockingModule } =
-  NativeModules as {
-    AppUsageModule?: AppUsageModuleContract;
-    ScrollDetectionModule?: ScrollDetectionModuleContract;
-    AppBlockingModule?: AppBlockingModuleContract;
-  };
+function getAppUsageModule(): AppUsageModuleContract | undefined {
+  return (NativeModules as { AppUsageModule?: AppUsageModuleContract }).AppUsageModule;
+}
+
+function getScrollDetectionModule(): ScrollDetectionModuleContract | undefined {
+  return (NativeModules as { ScrollDetectionModule?: ScrollDetectionModuleContract })
+    .ScrollDetectionModule;
+}
+
+function getAppBlockingModule(): AppBlockingModuleContract | undefined {
+  return (NativeModules as { AppBlockingModule?: AppBlockingModuleContract }).AppBlockingModule;
+}
 
 let usageAccessFallbackCache: { value: boolean; atMs: number } | null = null;
 const USAGE_ACCESS_FALLBACK_CACHE_MS = 30_000;
@@ -147,14 +153,16 @@ export async function getPermissionSnapshot(): Promise<PermissionStatusSnapshot>
 
 /**
  * Retrieves today's app usage stats from native code.
- * Placeholder behavior: returns an empty object when native module is unavailable.
+ * Throws when native usage is unavailable so callers do not persist empty fallback data.
  */
 export async function getUsageStats(): Promise<UsageStatsResponse> {
-  if (AppUsageModule?.getUsageStats) {
-    return AppUsageModule.getUsageStats();
+  const appUsageModule = getAppUsageModule();
+
+  if (appUsageModule?.getUsageStats) {
+    return appUsageModule.getUsageStats();
   }
 
-  return {};
+  throw new Error('AppUsageModule.getUsageStats is unavailable.');
 }
 
 /**
@@ -164,20 +172,22 @@ export async function getUsageStats(): Promise<UsageStatsResponse> {
 export async function hasUsageAccessPermission(options?: { allowExpensiveFallback?: boolean }): Promise<boolean> {
   const allowExpensiveFallback = options?.allowExpensiveFallback ?? true;
 
-  if (AppUsageModule?.hasUsageAccessPermission) {
-    return AppUsageModule.hasUsageAccessPermission();
+  const appUsageModule = getAppUsageModule();
+
+  if (appUsageModule?.hasUsageAccessPermission) {
+    return appUsageModule.hasUsageAccessPermission();
   }
 
   // Fallback path for older native binaries where explicit permission-status API is not exposed yet.
   // If usage stats call succeeds, usage access is effectively granted.
-  if (allowExpensiveFallback && AppUsageModule?.getUsageStats) {
+  if (allowExpensiveFallback && appUsageModule?.getUsageStats) {
     const now = Date.now();
     if (usageAccessFallbackCache && now - usageAccessFallbackCache.atMs < USAGE_ACCESS_FALLBACK_CACHE_MS) {
       return usageAccessFallbackCache.value;
     }
 
     try {
-      await AppUsageModule.getUsageStats();
+      await appUsageModule.getUsageStats();
       usageAccessFallbackCache = { value: true, atMs: now };
       return true;
     } catch {
@@ -194,8 +204,10 @@ export async function hasUsageAccessPermission(options?: { allowExpensiveFallbac
  * Returns false if native status API is unavailable.
  */
 export async function areNotificationsEnabled(): Promise<boolean> {
-  if (AppUsageModule?.areNotificationsEnabled) {
-    return AppUsageModule.areNotificationsEnabled();
+  const appUsageModule = getAppUsageModule();
+
+  if (appUsageModule?.areNotificationsEnabled) {
+    return appUsageModule.areNotificationsEnabled();
   }
 
   // Fallback for Android builds without native notification-status API.
@@ -240,7 +252,7 @@ export async function areNotificationsEnabled(): Promise<boolean> {
  * Placeholder behavior: no-op when native module is unavailable.
  */
 export function startScrollDetection(): void {
-  ScrollDetectionModule?.startScrollDetection?.();
+  getScrollDetectionModule()?.startScrollDetection?.();
 }
 
 /**
@@ -248,21 +260,21 @@ export function startScrollDetection(): void {
  * Placeholder behavior: no-op when native module is unavailable.
  */
 export function stopScrollDetection(): void {
-  ScrollDetectionModule?.stopScrollDetection?.();
+  getScrollDetectionModule()?.stopScrollDetection?.();
 }
 
 /**
  * Starts native foreground service that keeps blocker protection alive in background.
  */
 export function startForegroundProtectionService(): void {
-  ScrollDetectionModule?.startForegroundProtectionService?.();
+  getScrollDetectionModule()?.startForegroundProtectionService?.();
 }
 
 /**
  * Stops native foreground protection service.
  */
 export function stopForegroundProtectionService(): void {
-  ScrollDetectionModule?.stopForegroundProtectionService?.();
+  getScrollDetectionModule()?.stopForegroundProtectionService?.();
 }
 
 /**
@@ -270,8 +282,10 @@ export function stopForegroundProtectionService(): void {
  * Returns false if native status API is unavailable.
  */
 export async function isAccessibilityServiceEnabled(): Promise<boolean> {
-  if (ScrollDetectionModule?.isAccessibilityServiceEnabled) {
-    return ScrollDetectionModule.isAccessibilityServiceEnabled();
+  const scrollDetectionModule = getScrollDetectionModule();
+
+  if (scrollDetectionModule?.isAccessibilityServiceEnabled) {
+    return scrollDetectionModule.isAccessibilityServiceEnabled();
   }
 
   return false;
@@ -285,8 +299,10 @@ export async function blockApp(
   packageName: string,
   durationMinutes = 0,
 ): Promise<void> {
-  if (AppBlockingModule?.blockApp) {
-    await AppBlockingModule.blockApp(packageName, durationMinutes);
+  const appBlockingModule = getAppBlockingModule();
+
+  if (appBlockingModule?.blockApp) {
+    await appBlockingModule.blockApp(packageName, durationMinutes);
   }
 }
 
@@ -295,8 +311,10 @@ export async function blockApp(
  * Placeholder behavior: resolves immediately when native module is unavailable.
  */
 export async function unblockApp(packageName: string): Promise<void> {
-  if (AppBlockingModule?.unblockApp) {
-    await AppBlockingModule.unblockApp(packageName);
+  const appBlockingModule = getAppBlockingModule();
+
+  if (appBlockingModule?.unblockApp) {
+    await appBlockingModule.unblockApp(packageName);
   }
 }
 
@@ -305,8 +323,10 @@ export async function unblockApp(packageName: string): Promise<void> {
  * Placeholder behavior: returns false when native module is unavailable.
  */
 export async function isAppBlocked(packageName: string): Promise<boolean> {
-  if (AppBlockingModule?.isAppBlocked) {
-    return AppBlockingModule.isAppBlocked(packageName);
+  const appBlockingModule = getAppBlockingModule();
+
+  if (appBlockingModule?.isAppBlocked) {
+    return appBlockingModule.isAppBlocked(packageName);
   }
 
   return false;
@@ -317,8 +337,10 @@ export async function isAppBlocked(packageName: string): Promise<boolean> {
  * Returns null when the app is not blocked or the native module is unavailable.
  */
 export async function getNativeLockedUntil(packageName: string): Promise<number | null> {
-  if (AppBlockingModule?.getLockedUntil) {
-    return AppBlockingModule.getLockedUntil(packageName);
+  const appBlockingModule = getAppBlockingModule();
+
+  if (appBlockingModule?.getLockedUntil) {
+    return appBlockingModule.getLockedUntil(packageName);
   }
 
   return null;

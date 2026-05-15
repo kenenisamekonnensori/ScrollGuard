@@ -66,11 +66,19 @@ jest.mock('react-native-notifications', () => ({
   },
 }));
 
+jest.mock('../src/services/MonitoringService', () => ({
+  onAppStateChanged: jest.fn(),
+  startMonitoring: jest.fn().mockResolvedValue(undefined),
+  stopMonitoring: jest.fn(),
+}));
+
 test('renders correctly', async () => {
   let renderer: ReactTestRenderer.ReactTestRenderer | undefined;
 
-  await ReactTestRenderer.act(() => {
+  await ReactTestRenderer.act(async () => {
     renderer = ReactTestRenderer.create(<App />);
+    await Promise.resolve();
+    await Promise.resolve();
   });
 
   await ReactTestRenderer.act(() => {
