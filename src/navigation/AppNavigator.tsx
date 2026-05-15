@@ -16,11 +16,11 @@ import { PremiumScreen } from '../screens/PremiumScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { SignUpScreen } from '../screens/SignUpScreen';
-import { SplashScreen } from '../screens/SplashScreen';
 import { StatsScreen } from '../screens/StatsScreen';
 import { StyleSheet, Text } from 'react-native';
 import { colors } from '../theme/tokens';
 import { MainTabParamList, RootStackParamList } from './types';
+import { AppEntryRoute } from '../utils/appFlow';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -121,10 +121,14 @@ function MainTabs(): React.JSX.Element {
   );
 }
 
-export function AppNavigator(): React.JSX.Element {
+type AppNavigatorProps = {
+  initialRouteName: AppEntryRoute;
+};
+
+export function AppNavigator({ initialRouteName }: AppNavigatorProps): React.JSX.Element {
   return (
     <Stack.Navigator
-      initialRouteName="SplashScreen"
+      initialRouteName={initialRouteName}
       screenOptions={{
         headerTitleAlign: 'center',
         animation: 'slide_from_right',
@@ -141,7 +145,6 @@ export function AppNavigator(): React.JSX.Element {
         },
         headerShadowVisible: false,
       }}>
-      <Stack.Screen name="SplashScreen" component={SplashScreen} options={{ headerShown: false }} />
       <Stack.Screen
         name="OnboardingScreen"
         component={OnboardingScreen}

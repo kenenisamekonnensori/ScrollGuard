@@ -51,6 +51,40 @@ describe('UsageService.fetchTodayUsage', () => {
     expect(result[MONITORED_PACKAGES.tiktok]).toBe(60);
     expect(result[MONITORED_PACKAGES.instagram]).toBe(0);
     expect(result[MONITORED_PACKAGES.youtube]).toBe(0);
+    expect(mockSetUsageStats).toHaveBeenCalledTimes(1);
+  });
+
+  test('persists an authoritative all-zero native snapshot when monitored keys are present', async () => {
+    (getUsageStats as jest.Mock).mockResolvedValue({
+      [MONITORED_PACKAGES.tiktok]: 0,
+      [MONITORED_PACKAGES.instagram]: 0,
+      [MONITORED_PACKAGES.youtube]: 0,
+    });
+
+    const result = await fetchTodayUsage();
+
+    expect(result[MONITORED_PACKAGES.tiktok]).toBe(0);
+    expect(result[MONITORED_PACKAGES.instagram]).toBe(0);
+    expect(result[MONITORED_PACKAGES.youtube]).toBe(0);
+    expect(mockSetUsageStats).toHaveBeenCalledWith(result);
+  });
+
+  test('does not overwrite persisted usage when native snapshot is empty', async () => {
+    (getUsageStats as jest.Mock).mockResolvedValue({});
+
+    await expect(fetchTodayUsage()).rejects.toThrow(
+      'Native usage snapshot did not include monitored package data.',
+    );
+
+    expect(mockSetUsageStats).not.toHaveBeenCalled();
+  });
+
+  test('does not overwrite persisted usage when native usage fetch fails', async () => {
+    (getUsageStats as jest.Mock).mockRejectedValue(new Error('Usage access missing'));
+
+    await expect(fetchTodayUsage()).rejects.toThrow('Usage access missing');
+
+    expect(mockSetUsageStats).not.toHaveBeenCalled();
   });
 
   test('treats non-finite values as zero', async () => {

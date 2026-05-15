@@ -1,19 +1,16 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { AppScreen } from '../components/ui/AppScreen';
 import { PrimaryButton } from '../components/ui/PrimaryButton';
 import { SectionCard } from '../components/ui/SectionCard';
-import {
-  getResolvedAppLocks,
-  ResolvedAppLock,
-  unblockAppFamily,
-} from '../features/blocking/blockingController';
+import { useFocusSessionStore } from '../features/focus/focusSessionStore';
+import { FocusSession } from '../features/focus/focusSessionTypes';
 import { useSettingsStore } from '../store/settingsStore';
 import { colors } from '../theme/tokens';
 import { MONITORED_PACKAGE_LIST, PACKAGE_ICONS, PACKAGE_LABELS } from '../utils/appPackages';
 
-const ACTIVE_LOCKS_REFRESH_MS = 10_000;
+const ACTIVE_SESSIONS_REFRESH_MS = 10_000;
 
 type SettingLimitKey =
   | 'tiktokLimitMinutes'
@@ -30,15 +27,23 @@ type LimitControlProps = {
   onIncrease: () => void;
 };
 
-function formatLockTime(lockedUntil: number | null): string {
-  if (!lockedUntil) {
-    return 'Protected by native blocker';
+function formatSessionMeta(session: FocusSession): string {
+  if (session.status === 'blocked' && session.blockedUntil) {
+    return `Blocked until ${new Date(session.blockedUntil).toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+    })}`;
   }
 
-  return `Locked until ${new Date(lockedUntil).toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-  })}`;
+  if (session.status === 'tracking') {
+    const remainingSeconds = Math.max(
+      session.allowedUsageSeconds - session.consumedUsageSeconds,
+      0,
+    );
+    return `${Math.ceil(remainingSeconds / 60)} min usage left`;
+  }
+
+  return 'Completed';
 }
 
 function LimitControl({
@@ -80,62 +85,37 @@ export function SettingsScreen(): React.JSX.Element {
   const navigation = useNavigation<any>();
   const userSettings = useSettingsStore(state => state.userSettings);
   const updateLimit = useSettingsStore(state => state.updateLimit);
-  const [activeLocks, setActiveLocks] = useState<ResolvedAppLock[]>([]);
-  const isMountedRef = useRef(true);
+  const sessions = useFocusSessionStore(state => state.sessions);
+  const refreshFocusSessions = useFocusSessionStore(state => state.refreshFocusSessions);
+  const completeSession = useFocusSessionStore(state => state.completeSession);
 
   const adjustLimit = (key: SettingLimitKey, delta: number, min: number, max: number): void => {
     const nextValue = Math.max(min, Math.min(max, userSettings[key] + delta));
     updateLimit(key, nextValue);
   };
 
-  const refreshActiveLocks = useCallback(async (): Promise<void> => {
-    try {
-      const locks = await getResolvedAppLocks();
-      if (isMountedRef.current) {
-        setActiveLocks(locks);
-      }
-    } catch (error) {
-      if (__DEV__) {
-        console.warn('[SettingsScreen] Failed to refresh active locks.', error);
-      }
-      if (isMountedRef.current) {
-        setActiveLocks([]);
-      }
-    }
-  }, []);
-
-  const handleUnlock = async (packageName: string): Promise<void> => {
-    try {
-      await unblockAppFamily(packageName);
-      await refreshActiveLocks();
-    } catch (error) {
-      if (__DEV__) {
-        console.warn('[SettingsScreen] Failed to unlock app family.', error);
-      }
-    }
-  };
-
   useEffect(() => {
-    isMountedRef.current = true;
-    refreshActiveLocks().catch(error => {
+    refreshFocusSessions().catch(error => {
       if (__DEV__) {
-        console.warn('[SettingsScreen] Initial active-lock refresh failed.', error);
+        console.warn('[SettingsScreen] Initial focus-session refresh failed.', error);
       }
     });
 
     const interval = setInterval(() => {
-      refreshActiveLocks().catch(error => {
+      refreshFocusSessions().catch(error => {
         if (__DEV__) {
-          console.warn('[SettingsScreen] Scheduled active-lock refresh failed.', error);
+          console.warn('[SettingsScreen] Scheduled focus-session refresh failed.', error);
         }
       });
-    }, ACTIVE_LOCKS_REFRESH_MS);
+    }, ACTIVE_SESSIONS_REFRESH_MS);
 
     return () => {
-      isMountedRef.current = false;
       clearInterval(interval);
     };
-  }, [refreshActiveLocks]);
+  }, [refreshFocusSessions]);
+
+  const activeSessions = sessions.filter(session => session.status !== 'completed');
+  const blockedSessionCount = activeSessions.filter(session => session.status === 'blocked').length;
 
   const averageDailyLimit = Math.round(
     (userSettings.tiktokLimitMinutes
@@ -193,15 +173,19 @@ export function SettingsScreen(): React.JSX.Element {
       <SectionCard title="Protection Status">
         <View style={styles.statusHero}>
           <Text style={styles.statusHeroTitle}>
-            {activeLocks.length > 0 ? 'Focus shield active' : 'Focus shield ready'}
+            {blockedSessionCount > 0
+              ? 'Focus shield blocking'
+              : activeSessions.length > 0
+                ? 'Focus shield tracking'
+                : 'Focus shield ready'}
           </Text>
           <Text style={styles.statusHeroText}>
-            {activeLocks.length > 0
-              ? `${activeLocks.length} app lock${activeLocks.length > 1 ? 's are' : ' is'} currently enforced`
-              : 'No apps are blocked right now'}
+            {activeSessions.length > 0
+              ? `${activeSessions.length} manual session${activeSessions.length > 1 ? 's are' : ' is'} active`
+              : 'No manual focus sessions are active'}
           </Text>
           <Text style={styles.statusHeroHint}>
-            Limit enforcement is local-first and keeps working through the native blocker service.
+            Tracking starts only from Focus. Completed blocks never restart automatically.
           </Text>
         </View>
 
@@ -215,27 +199,27 @@ export function SettingsScreen(): React.JSX.Element {
         />
       </SectionCard>
 
-      <Text style={styles.sectionLabel}>Active Blocks</Text>
-      <SectionCard title="Manage Blocked Apps">
-        {activeLocks.length > 0 ? (
-          activeLocks.map(lock => (
-            <View key={lock.packageName} style={styles.lockRow}>
+      <Text style={styles.sectionLabel}>Manual Sessions</Text>
+      <SectionCard title="Active Focus Sessions">
+        {activeSessions.length > 0 ? (
+          activeSessions.map(session => (
+            <View key={session.id} style={styles.lockRow}>
               <View style={styles.lockLeft}>
                 <View style={styles.lockIconWrap}>
-                  <Text style={styles.lockIcon}>{PACKAGE_ICONS[lock.packageName] ?? '📱'}</Text>
+                  <Text style={styles.lockIcon}>{PACKAGE_ICONS[session.packageName] ?? '📱'}</Text>
                 </View>
                 <View style={styles.lockCopy}>
-                  <Text style={styles.lockName}>{lock.appName}</Text>
-                  <Text style={styles.lockMeta}>{formatLockTime(lock.lockedUntil)}</Text>
+                  <Text style={styles.lockName}>{session.appName}</Text>
+                  <Text style={styles.lockMeta}>{formatSessionMeta(session)}</Text>
                 </View>
               </View>
               <PrimaryButton
-                label="Unlock"
+                label={session.status === 'blocked' ? 'Unlock' : 'End'}
                 variant="ghost"
                 onPress={() => {
-                  handleUnlock(lock.packageName).catch(error => {
+                  completeSession(session.id).catch(error => {
                     if (__DEV__) {
-                      console.warn('[SettingsScreen] Unlock action failed.', error);
+                      console.warn('[SettingsScreen] End session action failed.', error);
                     }
                   });
                 }}
@@ -243,7 +227,7 @@ export function SettingsScreen(): React.JSX.Element {
             </View>
           ))
         ) : (
-          <Text style={styles.emptyText}>No apps are currently blocked.</Text>
+          <Text style={styles.emptyText}>No apps are currently in a manual focus session.</Text>
         )}
       </SectionCard>
 

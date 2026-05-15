@@ -7,7 +7,7 @@ import { colors } from '../../theme/tokens';
 export default function FocusValueScreen(): React.JSX.Element {
   return (
     <>
-      <SectionCard  title="What ScrollGuard does">
+      <SectionCard title="What ScrollGuard does">
         <FeatureRow icon="⏱" title="Shows where your scrolling time really goes." />
         <FeatureRow icon="⚠️" title="Warns you before you cross your limit." />
         <FeatureRow icon="🔒" title="Blocks apps when your limit is reached." />
@@ -26,16 +26,4 @@ const styles = StyleSheet.create({
     lineHeight: 12,
     color: colors.textMuted,
   },
-
-  firstSection: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#0B1330',
-    marginBottom: 8,
-    letterSpacing: -0.3,
-  
-  }
 });

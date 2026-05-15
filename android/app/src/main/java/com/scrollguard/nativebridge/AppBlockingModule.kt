@@ -46,7 +46,8 @@ class AppBlockingModule(private val reactContext: ReactApplicationContext) :
   @ReactMethod
   fun getLockedUntil(packageName: String, promise: Promise) {
     try {
-      promise.resolve(BlockedAppsStore.getLockedUntil(reactContext, packageName))
+      val lockedUntil = BlockedAppsStore.getLockedUntil(reactContext, packageName)
+      promise.resolve(lockedUntil?.toDouble())
     } catch (error: Exception) {
       promise.reject("E_LOCKED_UNTIL", error.message, error)
     }

@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StepIndicator } from '../components/onboarding/StepIndicator';
 import { AppScreen } from '../components/ui/AppScreen';
@@ -21,6 +22,7 @@ import { PermissionsScreen } from './onboarding/PermissionsScreen';
 import { StepContentProps, OnboardingStep } from './onboarding/types';
 import FocusValueScreen from './onboarding/FocusValueScreen';
 import { setOnboardingCompleted } from '../utils/appFlow';
+import { RootStackParamList } from '../navigation/types';
 
 type AnimatedStepContentProps = {
   children: React.ReactNode;
@@ -93,8 +95,13 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
 
 const FLEX_ONE_STYLE = { flex: 1 };
 
+type OnboardingNavigation = NativeStackNavigationProp<
+  RootStackParamList,
+  'OnboardingScreen'
+>;
+
 export function OnboardingContainer(): React.JSX.Element {
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation<OnboardingNavigation>();
   const [showHookScreen, setShowHookScreen] = React.useState(true);
   const [currentStepIndex, setCurrentStepIndex] = React.useState(0);
   const [pageWidth, setPageWidth] = React.useState(0);
@@ -111,12 +118,12 @@ export function OnboardingContainer(): React.JSX.Element {
 
   const navigateToPermissions = React.useCallback((): void => {
     completeOnboarding();
-    navigation.navigate('PermissionsSetupScreen');
+    navigation.replace('PermissionsSetupScreen');
   }, [completeOnboarding, navigation]);
 
   const navigateToLogin = React.useCallback((): void => {
     completeOnboarding();
-    navigation.navigate('LoginScreen');
+    navigation.replace('LoginScreen');
   }, [completeOnboarding, navigation]);
 
   React.useEffect(() => {
