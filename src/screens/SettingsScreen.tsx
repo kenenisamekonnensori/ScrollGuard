@@ -4,8 +4,10 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { AppScreen } from '../components/ui/AppScreen';
 import { PrimaryButton } from '../components/ui/PrimaryButton';
 import { SectionCard } from '../components/ui/SectionCard';
+import { clearLockSourceForAllApps } from '../features/blocking/blockingController';
 import { useFocusSessionStore } from '../features/focus/focusSessionStore';
 import { FocusSession } from '../features/focus/focusSessionTypes';
+import { refreshMonitoringNow } from '../services/MonitoringService';
 import { useSettingsStore } from '../store/settingsStore';
 import { colors } from '../theme/tokens';
 import { MONITORED_PACKAGE_LIST, PACKAGE_ICONS, PACKAGE_LABELS } from '../utils/appPackages';
@@ -85,9 +87,13 @@ export function SettingsScreen(): React.JSX.Element {
   const navigation = useNavigation<any>();
   const userSettings = useSettingsStore(state => state.userSettings);
   const updateLimit = useSettingsStore(state => state.updateLimit);
+  const dailyLimitEnabled = useSettingsStore(state => state.userSettings.dailyLimitEnabled);
+  const setDailyLimitEnabled = useSettingsStore(state => state.setDailyLimitEnabled);
   const sessions = useFocusSessionStore(state => state.sessions);
   const refreshFocusSessions = useFocusSessionStore(state => state.refreshFocusSessions);
   const completeSession = useFocusSessionStore(state => state.completeSession);
+  const [dailyLimitError, setDailyLimitError] = React.useState<string | null>(null);
+  const [isTogglingDailyLimit, setIsTogglingDailyLimit] = React.useState(false);
 
   const adjustLimit = (key: SettingLimitKey, delta: number, min: number, max: number): void => {
     const nextValue = Math.max(min, Math.min(max, userSettings[key] + delta));
@@ -126,10 +132,68 @@ export function SettingsScreen(): React.JSX.Element {
       / MONITORED_PACKAGE_LIST.length,
   );
 
+  const handleStartDailyLimit = React.useCallback(async (): Promise<void> => {
+    setDailyLimitError(null);
+    setIsTogglingDailyLimit(true);
+
+    try {
+      setDailyLimitEnabled(true);
+      await refreshMonitoringNow();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to start daily limits.';
+      setDailyLimitError(message);
+      if (__DEV__) {
+        console.warn('[SettingsScreen] Failed to start daily limits.', error);
+      }
+    } finally {
+      setIsTogglingDailyLimit(false);
+    }
+  }, [setDailyLimitEnabled]);
+
+  const handleStopDailyLimit = React.useCallback(async (): Promise<void> => {
+    setDailyLimitError(null);
+    setIsTogglingDailyLimit(true);
+
+    try {
+      await clearLockSourceForAllApps('dailyLimit');
+      setDailyLimitEnabled(false);
+      await refreshMonitoringNow();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to stop daily limits.';
+      setDailyLimitError(message);
+      if (__DEV__) {
+        console.warn('[SettingsScreen] Failed to stop daily limits.', error);
+      }
+    } finally {
+      setIsTogglingDailyLimit(false);
+    }
+  }, [setDailyLimitEnabled]);
+
   return (
-    <AppScreen
-      title="Settings"
-      subtitle="Customize limits, lock behavior, alerts, and account controls.">
+    <AppScreen>
+      <SectionCard>
+        <View style={styles.modeRow}>
+          <View style={styles.modeCopy}>
+            <Text style={styles.modeLabel}>Daily Limit Mode</Text>
+            <Text style={styles.modeValue}>{dailyLimitEnabled ? 'Active' : 'Paused'}</Text>
+            <Text style={styles.modeHint}>
+              {dailyLimitEnabled
+                ? 'Monitored apps will block as soon as they hit their daily limit.'
+                : 'Daily limits stay off until you start them.'}
+            </Text>
+          </View>
+          <View style={styles.modeAction}>
+            <PrimaryButton
+              label={dailyLimitEnabled ? 'Stop Daily Limit' : 'Start Daily Limit'}
+              variant={dailyLimitEnabled ? 'secondary' : 'primary'}
+              onPress={dailyLimitEnabled ? handleStopDailyLimit : handleStartDailyLimit}
+              disabled={isTogglingDailyLimit}
+            />
+          </View>
+        </View>
+        {dailyLimitError ? <Text style={styles.errorText}>{dailyLimitError}</Text> : null}
+      </SectionCard>
+
       <SectionCard>
         <View style={styles.summaryRow}>
           <View style={[styles.summaryChip, styles.summaryChipBlue]}>
@@ -179,12 +243,16 @@ export function SettingsScreen(): React.JSX.Element {
               ? 'Focus shield blocking'
               : activeSessions.length > 0
                 ? 'Focus shield tracking'
-                : 'Focus shield ready'}
+                : dailyLimitEnabled
+                  ? 'Protection ready'
+                  : 'Protection paused'}
           </Text>
           <Text style={styles.statusHeroText}>
             {activeSessions.length > 0
               ? `${activeSessions.length} manual session${activeSessions.length > 1 ? 's are' : ' is'} active`
-              : 'No manual focus sessions are active'}
+              : dailyLimitEnabled
+                ? 'Daily limits are active and focus sessions remain separate.'
+                : 'Daily limits are paused and manual focus sessions are still available.'}
           </Text>
           <Text style={styles.statusHeroHint}>
             Tracking starts only from Focus. Completed blocks never restart automatically.
@@ -267,6 +335,41 @@ const styles = StyleSheet.create({
   summaryRow: {
     flexDirection: 'row',
     gap: 12,
+  },
+  modeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 14,
+  },
+  modeCopy: {
+    flex: 1,
+    gap: 3,
+  },
+  modeLabel: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+  },
+  modeValue: {
+    color: '#0B1330',
+    fontSize: 22,
+    fontWeight: '900',
+  },
+  modeHint: {
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  modeAction: {
+    flexShrink: 0,
+  },
+  errorText: {
+    color: colors.danger,
+    fontSize: 12,
+    marginTop: 10,
   },
   summaryChip: {
     flex: 1,

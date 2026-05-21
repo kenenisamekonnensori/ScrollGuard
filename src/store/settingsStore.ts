@@ -12,6 +12,7 @@ const DEFAULT_USER_SETTINGS: UserSettings = {
   instagramLimitMinutes: 15,
   youtubeLimitMinutes: 15,
   lockDurationMinutes: 30,
+  dailyLimitEnabled: false,
 };
 
 function sanitizeMinutes(value: unknown, fallback: number): number {
@@ -38,6 +39,7 @@ interface SettingsState {
   userSettings: UserSettings;
   setUserSettings: (settings: UserSettings) => void;
   updateLimit: (key: SettingsLimitKey, value: number) => void;
+  setDailyLimitEnabled: (enabled: boolean) => void;
 }
 
 /**
@@ -67,6 +69,9 @@ function getInitialUserSettings(): UserSettings {
       persisted.lockDurationMinutes,
       DEFAULT_USER_SETTINGS.lockDurationMinutes,
     ),
+    dailyLimitEnabled: Boolean(
+      persisted.dailyLimitEnabled ?? DEFAULT_USER_SETTINGS.dailyLimitEnabled,
+    ),
   };
 }
 
@@ -94,6 +99,22 @@ export const useSettingsStore = create<SettingsState>(set => ({
       const nextSettings: UserSettings = {
         ...state.userSettings,
         [key]: safeValue,
+      };
+
+      setValue(SETTINGS_STORAGE_KEY, nextSettings);
+      return { userSettings: nextSettings };
+    });
+  },
+
+  setDailyLimitEnabled: enabled => {
+    set(state => {
+      if (state.userSettings.dailyLimitEnabled === enabled) {
+        return state;
+      }
+
+      const nextSettings: UserSettings = {
+        ...state.userSettings,
+        dailyLimitEnabled: enabled,
       };
 
       setValue(SETTINGS_STORAGE_KEY, nextSettings);

@@ -73,9 +73,7 @@ export function NotificationsScreen(): React.JSX.Element {
     : 'Not synced yet';
 
   return (
-    <AppScreen
-      title="Notifications Center"
-      subtitle="Real alerts sent to the device, plus current live lock status.">
+    <AppScreen>
       <SectionCard title="Live Protection">
         {activeLocks.length > 0 ? (
           activeLocks.map(lock => (
