@@ -34,6 +34,7 @@ import {
   clearLockSourceForAllApps,
   enforceDailyLimitBlocks,
   getResolvedAppLocks,
+  reconcileExpiredLocks,
   unblockApp,
 } from '../src/features/blocking/blockingController';
 import { MONITORED_PACKAGE_GROUPS, MONITORED_PACKAGES } from '../src/utils/appPackages';
@@ -164,5 +165,40 @@ describe('blockingController', () => {
 
     expect(mockedNativeBlockApp).toHaveBeenCalledWith(MONITORED_PACKAGES.instagram, 1);
     expect(mockedNativeUnblockApp).toHaveBeenCalledWith(MONITORED_PACKAGES.tiktok);
+  });
+
+  test('reconcileExpiredLocks only syncs native state for local lock entries', async () => {
+    mockedGetValue.mockImplementation(key => {
+      if (key === 'lockStates') {
+        return {};
+      }
+
+      return {};
+    });
+
+    await reconcileExpiredLocks();
+
+    expect(mockedNativeUnblockApp).not.toHaveBeenCalled();
+  });
+
+  test('reconcileExpiredLocks keeps active local locks synced to native state', async () => {
+    const now = Date.now();
+
+    mockedGetValue.mockImplementation(key => {
+      if (key === 'lockStates') {
+        return {
+          [MONITORED_PACKAGES.instagram]: {
+            focus: now + 60_000,
+          },
+        };
+      }
+
+      return {};
+    });
+
+    await reconcileExpiredLocks();
+
+    expect(mockedNativeBlockApp).toHaveBeenCalledWith(MONITORED_PACKAGES.instagram, 1);
+    expect(mockedNativeUnblockApp).not.toHaveBeenCalledWith(MONITORED_PACKAGES.instagram);
   });
 });

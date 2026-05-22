@@ -102,12 +102,12 @@ async function monitorTick(): Promise<void> {
   const dailyLimitEnabled = useSettingsStore.getState().userSettings.dailyLimitEnabled;
   const focusSessionsActive = hasActiveFocusSessions();
 
-  const usageSnapshot = await fetchTodayUsage();
-  useUsageStore.getState().setLastSyncedAt(Date.now());
-
   if (!dailyLimitEnabled && !focusSessionsActive) {
     return;
   }
+
+  const usageSnapshot = await fetchTodayUsage();
+  useUsageStore.getState().setLastSyncedAt(Date.now());
 
   if (dailyLimitEnabled) {
     await enforceDailyLimitBlocks(usageSnapshot);

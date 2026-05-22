@@ -398,7 +398,12 @@ export async function reconcileExpiredLocks(): Promise<void> {
     let hasActiveLock = false;
 
     for (const packageName of packageNames) {
-      const previousState = currentLockStates[packageName] ?? {};
+      const previousState = currentLockStates[packageName];
+
+      if (!previousState) {
+        continue;
+      }
+
       const cleanedState = pruneExpiredSources(previousState, now);
 
       if (getOverallLockedUntil(previousState, now) !== null) {
@@ -408,8 +413,6 @@ export async function reconcileExpiredLocks(): Promise<void> {
       if (getOverallLockedUntil(cleanedState, now) !== null) {
         hasActiveLock = true;
         nextLockStates[packageName] = cleanedState;
-      } else {
-        delete nextLockStates[packageName];
       }
 
       await syncNativeLock(packageName, cleanedState);
