@@ -6,6 +6,7 @@ export interface UserSettings {
   instagramLimitMinutes: number;
   youtubeLimitMinutes: number;
   lockDurationMinutes: number;
+  dailyLimitEnabled: boolean;
 }
 
 /**

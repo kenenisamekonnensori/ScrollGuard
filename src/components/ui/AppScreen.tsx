@@ -4,7 +4,7 @@ import { Screen } from '../Screen';
 import { colors, spacing } from '../../theme/tokens';
 
 type AppScreenProps = {
-  title: string;
+  title?: string;
   subtitle?: string;
   children: React.ReactNode;
   noScroll?: boolean;

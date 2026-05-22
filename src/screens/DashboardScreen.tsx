@@ -33,6 +33,7 @@ export function DashboardScreen(): React.JSX.Element {
   const usageStats = useUsageStore(state => state.usageStats);
   const videoCounts = useUsageStore(state => state.videoCounts);
   const userSettings = useSettingsStore(state => state.userSettings);
+  const dailyLimitEnabled = useSettingsStore(state => state.userSettings.dailyLimitEnabled);
   const lastSyncedAt = useUsageStore(state => state.lastSyncedAt);
 
   const totalSeconds = Object.values(usageStats).reduce((acc, value) => acc + value, 0);
@@ -51,11 +52,12 @@ export function DashboardScreen(): React.JSX.Element {
     icon: PACKAGE_ICONS[packageName] ?? '📱',
     minutes: toMinutes(usageStats[packageName] ?? 0),
     videos: videoCounts[packageName] ?? 0,
-    limitMinutes: userSettings[LIMIT_SETTING_KEYS[packageName]],
   }));
   const maxMinutes = Math.max(...appRows.map(row => row.minutes), 1);
   const message =
-    limitUsedPercent >= 100
+    !dailyLimitEnabled
+      ? 'Daily limits are paused. Start them in Settings when you want enforcement to begin.'
+      : limitUsedPercent >= 100
       ? 'You hit your daily focus ceiling. Step away before the next lock starts stacking.'
       : limitUsedPercent >= 75
         ? 'You have watched a lot today. Consider taking a break before you hit your limit.'
@@ -68,14 +70,14 @@ export function DashboardScreen(): React.JSX.Element {
     : 'Not synced yet';
 
   return (
-    <AppScreen
-      title="ScrollGuard"
-      subtitle="Your live dashboard for daily focus and app protection.">
+    <AppScreen>
       <SectionCard>
         <View style={styles.heroTopRow}>
           <Text style={styles.heroTitle}>Daily Focus</Text>
           <View style={styles.limitBadge}>
-            <Text style={styles.limitBadgeText}>{limitUsedPercent}% Limit Used</Text>
+            <Text style={styles.limitBadgeText}>
+              {dailyLimitEnabled ? `${limitUsedPercent}% Limit Used` : 'Daily Limits Paused'}
+            </Text>
           </View>
         </View>
 

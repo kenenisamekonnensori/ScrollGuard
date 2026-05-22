@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { AppScreen } from '../components/ui/AppScreen';
 import { SectionCard } from '../components/ui/SectionCard';
+import { getBlockHistory } from '../features/blocking/blockingController';
 import { useUsageStore } from '../store/usageStore';
 import { colors } from '../theme/tokens';
 import { MONITORED_PACKAGE_LIST, PACKAGE_LABELS } from '../utils/appPackages';
@@ -22,6 +23,14 @@ function getLocalDateKey(date: Date): string {
   const month = `${date.getMonth() + 1}`.padStart(2, '0');
   const day = `${date.getDate()}`.padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+function isWithinCurrentWeek(timestamp: number): boolean {
+  const now = new Date();
+  const startOfWeek = new Date(now);
+  startOfWeek.setHours(0, 0, 0, 0);
+  startOfWeek.setDate(startOfWeek.getDate() - 6);
+  return timestamp >= startOfWeek.getTime();
 }
 
 function buildLastSevenDaysHistory(
@@ -52,12 +61,12 @@ export function StatsScreen(): React.JSX.Element {
   const usageStats = useUsageStore(state => state.usageStats);
   const videoCounts = useUsageStore(state => state.videoCounts);
   const dailyHistory = useUsageStore(state => state.dailyHistory);
+  const blockHistory = getBlockHistory();
 
   const dailyMinutes = Object.values(usageStats).reduce((total, value) => total + toMinutes(value), 0);
   const totalVideos = Object.values(videoCounts).reduce((total, value) => total + value, 0);
   const fullWeekHistory = buildLastSevenDaysHistory(dailyHistory);
   const weeklyMinutes = fullWeekHistory.reduce((total, item) => total + item.minutes, 0);
-  const chartMaxMinutes = Math.max(...fullWeekHistory.map(snapshot => snapshot.minutes), 1);
   const previousAverageMinutes =
     fullWeekHistory.length > 1
       ? Math.round(
@@ -67,7 +76,10 @@ export function StatsScreen(): React.JSX.Element {
             / (fullWeekHistory.length - 1),
         )
       : dailyMinutes;
-  const timeSavedMinutes = Math.max(previousAverageMinutes - dailyMinutes, 0);
+  const weeklySavedMinutes = blockHistory
+    .filter(item => isWithinCurrentWeek(item.createdAt))
+    .reduce((total, item) => total + item.durationMinutes, 0);
+  const chartMaxMinutes = Math.max(...fullWeekHistory.map(snapshot => snapshot.minutes), 1);
   const streakDays = (() => {
     let streak = 0;
     const reversed = [...fullWeekHistory].reverse();
@@ -93,9 +105,7 @@ export function StatsScreen(): React.JSX.Element {
   const chartSummary = fullWeekHistory;
 
   return (
-    <AppScreen
-      title="Usage Analytics"
-      subtitle="See how your screen time is trending across the week.">
+    <AppScreen>
       <View style={styles.streakBanner}>
         <Text style={styles.streakTitle}>{streakDays} Day Healthy Streak!</Text>
         <Text style={styles.streakText}>
@@ -115,9 +125,9 @@ export function StatsScreen(): React.JSX.Element {
         </SectionCard>
         <SectionCard>
           <Text style={styles.metricLabel}>Time Saved This Week</Text>
-          <Text style={styles.metricValue}>{formatMinutes(timeSavedMinutes)}</Text>
+          <Text style={styles.metricValue}>{formatMinutes(weeklySavedMinutes)}</Text>
           <Text style={styles.metricTrendGood}>
-            {timeSavedMinutes > 0 ? `-${timeSavedMinutes} min vs recent average` : 'No reduction yet'}
+            {weeklySavedMinutes > 0 ? `Blocked ${weeklySavedMinutes} min this week` : 'No blocks recorded yet'}
           </Text>
         </SectionCard>
       </View>

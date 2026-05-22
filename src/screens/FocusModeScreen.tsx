@@ -364,9 +364,7 @@ export function FocusModeScreen(): React.JSX.Element {
   }, [completeSession]);
 
   return (
-    <AppScreen
-      title="Focus"
-      subtitle="Start a focus session manually, then ScrollGuard tracks only that app until the session completes.">
+    <AppScreen>
       <Animated.View style={fadeInStyle}>
         <View style={[styles.hero, isDark ? styles.heroDark : styles.heroLight]}>
           <View>

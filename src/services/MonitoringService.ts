@@ -3,7 +3,8 @@ import {
   DeviceEventEmitter,
   EmitterSubscription,
 } from 'react-native';
-import { reconcileExpiredLocks } from '../features/blocking/blockingController';
+import { enforceDailyLimitBlocks, reconcileExpiredLocks } from '../features/blocking/blockingController';
+import { fetchTodayUsage } from './UsageService';
 import { scrollService } from './ScrollService';
 import { useUsageStore } from '../store/usageStore';
 import {
@@ -11,6 +12,7 @@ import {
   hasTrackingFocusSessionForPackage,
   refreshFocusSessions,
 } from '../features/focus/focusSessionStore';
+import { useSettingsStore } from '../store/settingsStore';
 import {
   MONITORED_PACKAGE_ALIAS_LIST,
   resolveCanonicalPackageName,
@@ -97,12 +99,23 @@ const isTestEnvironment =
 async function monitorTick(): Promise<void> {
   await reconcileExpiredLocks();
 
-  if (!hasActiveFocusSessions()) {
+  const dailyLimitEnabled = useSettingsStore.getState().userSettings.dailyLimitEnabled;
+  const focusSessionsActive = hasActiveFocusSessions();
+
+  if (!dailyLimitEnabled && !focusSessionsActive) {
     return;
   }
 
-  await refreshFocusSessions();
+  const usageSnapshot = await fetchTodayUsage();
   useUsageStore.getState().setLastSyncedAt(Date.now());
+
+  if (dailyLimitEnabled) {
+    await enforceDailyLimitBlocks(usageSnapshot);
+  }
+
+  if (focusSessionsActive) {
+    await refreshFocusSessions({ skipUsageRefresh: true });
+  }
 }
 
 async function runMonitorTickCoalesced(): Promise<void> {

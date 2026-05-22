@@ -24,7 +24,7 @@ type FocusSessionState = {
   isRefreshing: boolean;
   lastError: string | null;
   startFocusSession: (input: StartFocusSessionInput) => Promise<FocusSession>;
-  refreshFocusSessions: () => Promise<void>;
+  refreshFocusSessions: (options?: { skipUsageRefresh?: boolean }) => Promise<void>;
   completeSession: (sessionId: string) => Promise<void>;
 };
 
@@ -157,12 +157,12 @@ function getConsumedUsageSeconds(session: FocusSession): number {
 async function blockSessionApps(session: FocusSession): Promise<void> {
   const durationMinutes = Math.ceil(session.blockDurationSeconds / 60);
   await Promise.all(
-    session.packageNames.map(packageName => blockApp(packageName, durationMinutes)),
+    session.packageNames.map(packageName => blockApp(packageName, durationMinutes, 'focus')),
   );
 }
 
 async function completeExpiredBlock(session: FocusSession, timestamp: number): Promise<FocusSession> {
-  await unblockAppFamily(session.packageName);
+  await unblockAppFamily(session.packageName, 'focus');
 
   return {
     ...session,
@@ -270,13 +270,13 @@ export const useFocusSessionStore = create<FocusSessionState>((set, get) => ({
     return session;
   },
 
-  refreshFocusSessions: async () => {
+  refreshFocusSessions: async (options = {}) => {
     const hasTrackingSession = get().sessions.some(session => session.status === 'tracking');
 
     set({ isRefreshing: true, lastError: null });
 
     try {
-      if (hasTrackingSession) {
+      if (hasTrackingSession && !options.skipUsageRefresh) {
         await fetchTodayUsage();
       }
 
@@ -312,7 +312,7 @@ export const useFocusSessionStore = create<FocusSessionState>((set, get) => ({
     }
 
     if (targetSession.status === 'blocked') {
-      await unblockAppFamily(targetSession.packageName);
+      await unblockAppFamily(targetSession.packageName, 'focus');
     }
 
     const timestamp = now();
@@ -347,6 +347,6 @@ export function hasTrackingFocusSessionForPackage(packageName: string): boolean 
   ));
 }
 
-export async function refreshFocusSessions(): Promise<void> {
-  await useFocusSessionStore.getState().refreshFocusSessions();
+export async function refreshFocusSessions(options?: { skipUsageRefresh?: boolean }): Promise<void> {
+  await useFocusSessionStore.getState().refreshFocusSessions(options);
 }

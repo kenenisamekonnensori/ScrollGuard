@@ -1,4 +1,4 @@
-import { MONITORED_PACKAGES } from '../src/utils/appPackages';
+import { MONITORED_PACKAGE_GROUPS, MONITORED_PACKAGES } from '../src/utils/appPackages';
 
 const mockGetValue = jest.fn();
 const mockSetValue = jest.fn();
@@ -70,6 +70,7 @@ describe('focusSessionStore', () => {
     expect(session.status).toBe('tracking');
     expect(session.baselineUsageSeconds).toBe(120);
     expect(mockSetValue).toHaveBeenCalled();
+    expect(mockBlockApp).not.toHaveBeenCalled();
 
     await expect(
       useFocusSessionStore.getState().startFocusSession({
@@ -99,7 +100,8 @@ describe('focusSessionStore', () => {
 
     const [session] = useFocusSessionStore.getState().sessions;
     expect(session.status).toBe('blocked');
-    expect(mockBlockApp).toHaveBeenCalledWith(MONITORED_PACKAGES.instagram, 15);
+    expect(mockBlockApp).toHaveBeenCalledWith(MONITORED_PACKAGES.instagram, 15, 'focus');
+    expect(mockBlockApp).toHaveBeenCalledWith(MONITORED_PACKAGE_GROUPS.instagram[1], 15, 'focus');
   });
 
   test('completes expired blocked sessions without returning to tracking', async () => {
@@ -128,6 +130,6 @@ describe('focusSessionStore', () => {
 
     const [session] = useFocusSessionStore.getState().sessions;
     expect(session.status).toBe('completed');
-    expect(mockUnblockAppFamily).toHaveBeenCalledWith(MONITORED_PACKAGES.instagram);
+    expect(mockUnblockAppFamily).toHaveBeenCalledWith(MONITORED_PACKAGES.instagram, 'focus');
   });
 });

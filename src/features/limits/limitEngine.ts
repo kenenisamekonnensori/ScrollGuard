@@ -1,9 +1,9 @@
-import { refreshFocusSessions } from '../focus/focusSessionStore';
+import { refreshMonitoringNow } from '../../services/MonitoringService';
 
 /**
  * Legacy compatibility entrypoint.
- * Limit enforcement is now driven exclusively by explicit focus sessions.
+ * Monitoring now handles both daily limits and manual focus sessions.
  */
 export async function evaluateUsageLimits(): Promise<void> {
-  await refreshFocusSessions();
+  await refreshMonitoringNow();
 }
