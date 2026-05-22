@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StepContentProps } from './types';
 import { colors, spacing, typography } from '../../theme/tokens';
 
-const HERO_IMAGE = require('../../../docs/image.jpg');
+const HERO_IMAGE = require('../../../docs/image.webp');
 
 export function HookScreen({ onNext, onSkip }: StepContentProps): React.JSX.Element {
   const insets = useSafeAreaInsets();
