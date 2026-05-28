@@ -114,7 +114,7 @@ describe('MonitoringService.refreshMonitoringNow', () => {
     expect(mockRefreshFocusSessions).not.toHaveBeenCalled();
   });
 
-  test('refreshes usage and skips the nested usage fetch when focus sessions are active', async () => {
+  test('refreshes focus sessions without forcing a usage fetch when only focus is active', async () => {
     mockHasActiveFocusSessions.mockReturnValue(true);
     mockHasTrackingFocusSessions.mockReturnValue(true);
 
@@ -122,8 +122,8 @@ describe('MonitoringService.refreshMonitoringNow', () => {
 
     await refreshMonitoringNow();
 
-    expect(mockFetchTodayUsage).toHaveBeenCalledTimes(1);
-    expect(mockSetLastSyncedAt).toHaveBeenCalledTimes(1);
+    expect(mockFetchTodayUsage).not.toHaveBeenCalled();
+    expect(mockSetLastSyncedAt).not.toHaveBeenCalled();
     expect(mockRefreshFocusSessions).toHaveBeenCalledWith({ skipUsageRefresh: true });
   });
 
@@ -137,6 +137,20 @@ describe('MonitoringService.refreshMonitoringNow', () => {
 
     expect(mockFetchTodayUsage).not.toHaveBeenCalled();
     expect(mockRefreshFocusSessions).toHaveBeenCalledWith({ skipUsageRefresh: true });
+  });
+
+  test('continues focus enforcement when usage refresh fails while focus sessions are active', async () => {
+    mockHasActiveFocusSessions.mockReturnValue(true);
+    mockHasTrackingFocusSessions.mockReturnValue(true);
+    mockFetchTodayUsage.mockRejectedValue(new Error('Usage access missing'));
+
+    const { refreshMonitoringNow } = getService();
+
+    await refreshMonitoringNow();
+
+    expect(mockRefreshFocusSessions).toHaveBeenCalledWith({ skipUsageRefresh: true });
+    expect(mockEnforceDailyLimitBlocks).not.toHaveBeenCalled();
+    expect(mockSetLastSyncedAt).not.toHaveBeenCalled();
   });
 
   test('does not stamp lastSyncedAt when usage refresh fails', async () => {

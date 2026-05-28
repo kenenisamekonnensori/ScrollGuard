@@ -9,7 +9,6 @@ import { scrollService } from './ScrollService';
 import { useUsageStore } from '../store/usageStore';
 import {
   hasActiveFocusSessions,
-  hasTrackingFocusSessions,
   hasTrackingFocusSessionForPackage,
   refreshFocusSessions,
 } from '../features/focus/focusSessionStore';
@@ -102,18 +101,20 @@ async function monitorTick(): Promise<void> {
 
   const dailyLimitEnabled = useSettingsStore.getState().userSettings.dailyLimitEnabled;
   const focusSessionsActive = hasActiveFocusSessions();
-  const trackingFocusSessionsActive = hasTrackingFocusSessions();
 
   if (!dailyLimitEnabled && !focusSessionsActive) {
     return;
   }
 
-  if (dailyLimitEnabled || trackingFocusSessionsActive) {
-    const usageSnapshot = await fetchTodayUsage();
-    useUsageStore.getState().setLastSyncedAt(Date.now());
-
-    if (dailyLimitEnabled) {
+  if (dailyLimitEnabled) {
+    try {
+      const usageSnapshot = await fetchTodayUsage();
+      useUsageStore.getState().setLastSyncedAt(Date.now());
       await enforceDailyLimitBlocks(usageSnapshot);
+    } catch (error) {
+      if (__DEV__) {
+        console.warn('[MonitoringService] Failed to refresh usage snapshot for daily limits.', error);
+      }
     }
   }
 
