@@ -217,7 +217,13 @@ async function reconcileSession(session: FocusSession, timestamp: number): Promi
   WARNING_THRESHOLDS.forEach(threshold => {
     if (usagePercent >= threshold && !warningThresholdsSent.includes(threshold)) {
       warningThresholdsSent.push(threshold);
-      sendWarningNotification(session.appName, consumedUsageSeconds / 60, threshold);
+      try {
+        sendWarningNotification(session.appName, consumedUsageSeconds / 60, threshold);
+      } catch (error) {
+        if (__DEV__) {
+          console.warn('[focusSessionStore] Failed to send warning notification.', error);
+        }
+      }
     }
   });
 
@@ -248,7 +254,13 @@ async function reconcileSession(session: FocusSession, timestamp: number): Promi
       console.warn('[focusSessionStore] Failed to apply native focus block.', error);
     }
   }
-  sendLimitReachedNotification(session.appName);
+  try {
+    sendLimitReachedNotification(session.appName);
+  } catch (error) {
+    if (__DEV__) {
+      console.warn('[focusSessionStore] Failed to send limit reached notification.', error);
+    }
+  }
   return blockedSession;
 }
 

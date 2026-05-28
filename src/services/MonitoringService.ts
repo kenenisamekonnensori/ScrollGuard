@@ -171,6 +171,10 @@ function resetForegroundTracking(): void {
 }
 
 function getCurrentPollIntervalMs(nowMs = Date.now()): number {
+  if (hasActiveFocusSessions()) {
+    return POLL_INTERVAL_MS;
+  }
+
   if (currentAppState !== 'active') {
     return IDLE_POLL_INTERVAL_MS;
   }
@@ -215,7 +219,7 @@ function scheduleNextMonitorTick(): void {
       return;
     }
 
-    if (currentAppState === 'active') {
+    if (currentAppState === 'active' || hasActiveFocusSessions()) {
       refreshMonitoringNow().catch(error => {
         diagnostics.failedTicks += 1;
         if (__DEV__) {

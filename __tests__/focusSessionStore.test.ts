@@ -215,4 +215,30 @@ describe('focusSessionStore', () => {
     expect(session.status).toBe('completed');
     expect(mockUnblockAppFamily).toHaveBeenCalledWith(MONITORED_PACKAGES.instagram, 'focus');
   });
+
+  test('continues blocking flow even if limit reached notification fails', async () => {
+    const { sendLimitReachedNotification } = require('../src/services/NotificationService');
+    sendLimitReachedNotification.mockImplementation(() => {
+      throw new TypeError('undefined is not a function');
+    });
+
+    const { useFocusSessionStore } = getStoreModule();
+
+    await useFocusSessionStore.getState().startFocusSession({
+      appFamily: 'instagram',
+      allowedUsageMinutes: 1,
+      blockDurationMinutes: 15,
+    });
+
+    mockUsageStateGetter.mockReturnValue({
+      usageStats: {
+        [MONITORED_PACKAGES.instagram]: 181,
+      },
+    });
+
+    await expect(useFocusSessionStore.getState().refreshFocusSessions()).resolves.toBeUndefined();
+
+    const [session] = useFocusSessionStore.getState().sessions;
+    expect(session.status).toBe('blocked');
+  });
 });
