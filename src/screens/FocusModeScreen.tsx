@@ -69,11 +69,21 @@ function formatClock(timestamp: number | null): string {
 }
 
 function getRemainingBlockSeconds(session: FocusSession, nowMs: number): number {
-  if (session.status !== 'blocked' || !session.blockedUntil) {
+  if (session.status !== 'blocked') {
     return 0;
   }
 
-  return Math.max(Math.ceil((session.blockedUntil - nowMs) / 1000), 0);
+  if (session.blockedUntil) {
+    return Math.max(Math.ceil((session.blockedUntil - nowMs) / 1000), 0);
+  }
+
+  const blockedAt = session.blockedAt ?? session.updatedAt;
+  const elapsedSinceBlockSeconds = Math.max(
+    Math.floor((nowMs - blockedAt) / 1000),
+    0,
+  );
+
+  return Math.max(session.blockDurationSeconds - elapsedSinceBlockSeconds, 0);
 }
 
 function getEffectiveConsumedUsageSeconds(session: FocusSession, nowMs: number): number {
@@ -87,6 +97,53 @@ function getEffectiveConsumedUsageSeconds(session: FocusSession, nowMs: number):
   );
 
   return Math.max(session.consumedUsageSeconds, elapsedSinceStartSeconds);
+}
+
+function getSessionTimeline(session: FocusSession, nowMs: number): {
+  label: string;
+  valueLabel: string;
+  progress: number;
+  accent: 'tracking' | 'blocked';
+  primaryMetricLabel: string;
+  primaryMetricValue: string;
+  secondaryMetricLabel: string;
+  secondaryMetricValue: string;
+} {
+  const effectiveConsumedUsageSeconds = getEffectiveConsumedUsageSeconds(session, nowMs);
+  const remainingUsageSeconds = Math.max(
+    session.allowedUsageSeconds - effectiveConsumedUsageSeconds,
+    0,
+  );
+  const remainingBlockSeconds = getRemainingBlockSeconds(session, nowMs);
+
+  if (session.status === 'blocked') {
+    const blockElapsedSeconds = Math.max(session.blockDurationSeconds - remainingBlockSeconds, 0);
+    return {
+      label: 'Blocking time',
+      valueLabel: `${formatMinutesFromSeconds(remainingBlockSeconds)} left`,
+      progress: session.blockDurationSeconds > 0
+        ? Math.min(blockElapsedSeconds / session.blockDurationSeconds, 1)
+        : 1,
+      accent: 'blocked',
+      primaryMetricLabel: 'block left',
+      primaryMetricValue: formatMinutesFromSeconds(remainingBlockSeconds),
+      secondaryMetricLabel: 'block length',
+      secondaryMetricValue: formatMinutesFromSeconds(session.blockDurationSeconds),
+    };
+  }
+
+  return {
+    label: 'Allowed time',
+    valueLabel: `${formatMinutesFromSeconds(remainingUsageSeconds)} left`,
+    progress: session.allowedUsageSeconds > 0
+      ? Math.min(effectiveConsumedUsageSeconds / session.allowedUsageSeconds, 1)
+      : 1,
+    accent: 'tracking',
+    primaryMetricLabel: 'usage left',
+    primaryMetricValue: formatMinutesFromSeconds(remainingUsageSeconds),
+    secondaryMetricLabel: 'block length',
+    secondaryMetricValue: formatMinutesFromSeconds(session.blockDurationSeconds),
+  };
 }
 
 function isActiveSession(session: FocusSession): boolean {
@@ -146,21 +203,15 @@ function FocusSessionCard({
   isEnding: boolean;
   onComplete: (sessionId: string) => void;
 }): React.JSX.Element {
-  // Card-level derived values are memoized so each poll tick only updates what changed.
-const effectiveConsumedUsageSeconds = getEffectiveConsumedUsageSeconds(session, nowMs);
-const progress = session.allowedUsageSeconds > 0
-  ? Math.min(effectiveConsumedUsageSeconds / session.allowedUsageSeconds, 1)
-  : 1;
-const remainingUsageSeconds = Math.max(
-  session.allowedUsageSeconds - effectiveConsumedUsageSeconds,
-  0,
-);
-const remainingBlockSeconds = getRemainingBlockSeconds(session, nowMs);
-const progressWidthStyle = React.useMemo(
-  () => ({
-    width: `${Math.max(progress * 100, session.status === 'tracking' ? 4 : 0)}%` as DimensionValue,
-  }),
-    [progress, session.status],
+  const timeline = React.useMemo(
+    () => getSessionTimeline(session, nowMs),
+    [nowMs, session],
+  );
+  const progressWidthStyle = React.useMemo(
+    () => ({
+      width: `${Math.max(timeline.progress * 100, 4)}%` as DimensionValue,
+    }),
+    [timeline.progress],
   );
 
   return (
@@ -185,29 +236,41 @@ const progressWidthStyle = React.useMemo(
       <View style={styles.metricGrid}>
         <View style={[styles.metricTile, isDark ? styles.metricTileDark : styles.metricTileLight]}>
           <Text style={[styles.metricValue, isDark ? styles.metricValueDark : styles.metricValueLight]}>
-            {formatMinutesFromSeconds(remainingUsageSeconds)}
+            {timeline.primaryMetricValue}
           </Text>
           <Text style={[styles.metricLabel, isDark ? styles.metricLabelDark : styles.metricLabelLight]}>
-            usage left
+            {timeline.primaryMetricLabel}
           </Text>
         </View>
         <View style={[styles.metricTile, isDark ? styles.metricTileDark : styles.metricTileLight]}>
           <Text style={[styles.metricValue, isDark ? styles.metricValueDark : styles.metricValueLight]}>
-            {session.status === 'blocked'
-              ? formatMinutesFromSeconds(remainingBlockSeconds)
-              : formatMinutesFromSeconds(session.blockDurationSeconds)}
+            {timeline.secondaryMetricValue}
           </Text>
           <Text style={[styles.metricLabel, isDark ? styles.metricLabelDark : styles.metricLabelLight]}>
-            {session.status === 'blocked' ? 'block left' : 'block length'}
+            {timeline.secondaryMetricLabel}
           </Text>
         </View>
       </View>
 
-      <View style={[styles.progressTrack, isDark ? styles.progressTrackDark : styles.progressTrackLight]}>
+      <View style={styles.phaseRow}>
+        <Text style={[styles.phaseLabel, isDark ? styles.phaseLabelDark : styles.phaseLabelLight]}>
+          {timeline.label}
+        </Text>
+        <Text style={[styles.phaseValue, isDark ? styles.phaseValueDark : styles.phaseValueLight]}>
+          {timeline.valueLabel}
+        </Text>
+      </View>
+
+      <View
+        style={[
+          styles.progressTrack,
+          isDark ? styles.progressTrackDark : styles.progressTrackLight,
+          timeline.accent === 'blocked' ? styles.progressTrackBlocked : null,
+        ]}>
         <View
           style={[
             styles.progressFill,
-            session.status === 'blocked' ? styles.progressFillBlocked : styles.progressFillTracking,
+            timeline.accent === 'blocked' ? styles.progressFillBlocked : styles.progressFillTracking,
             progressWidthStyle,
           ]}
         />
@@ -217,7 +280,7 @@ const progressWidthStyle = React.useMemo(
         <Text style={[styles.sessionMeta, isDark ? styles.sessionMetaDark : styles.sessionMetaLight]}>
           {session.status === 'blocked'
             ? `Unlocks at ${formatClock(session.blockedUntil)}`
-            : `${formatMinutesFromSeconds(effectiveConsumedUsageSeconds)} used`}
+            : `${formatMinutesFromSeconds(getEffectiveConsumedUsageSeconds(session, nowMs))} used`}
         </Text>
         {session.status !== 'completed' ? (
           <Pressable disabled={isEnding} onPress={() => onComplete(session.id)} hitSlop={8}>
@@ -340,39 +403,42 @@ export function FocusModeScreen(): React.JSX.Element {
   );
   const hasActiveSelectedApp = activeSessions.some(session => session.appFamily === selectedFamily);
 
-  const handleStartFocus = React.useCallback((): void => {
+  const handleStartFocus = React.useCallback(async (): Promise<void> => {
     setSessionActionError(null);
     setIsStarting(true);
-    startFocusSession({
-      appFamily: selectedFamily,
-      allowedUsageMinutes,
-      blockDurationMinutes,
-    })
-      .then(() => refreshMonitoringNow())
-      .catch(error => {
-        const message = error instanceof Error ? error.message : 'Unable to start focus session.';
-        setSessionActionError(message);
-      })
-      .finally(() => {
-        setIsStarting(false);
+    try {
+      await startFocusSession({
+        appFamily: selectedFamily,
+        allowedUsageMinutes,
+        blockDurationMinutes,
       });
+      await refreshMonitoringNow();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to start focus session.';
+      setSessionActionError(message);
+      if (__DEV__) {
+        console.warn('[FocusModeScreen] Failed to start focus session.', error);
+      }
+    } finally {
+      setIsStarting(false);
+    }
   }, [allowedUsageMinutes, blockDurationMinutes, selectedFamily, startFocusSession]);
 
-  const handleCompleteSession = React.useCallback((sessionId: string): void => {
+  const handleCompleteSession = React.useCallback(async (sessionId: string): Promise<void> => {
     setSessionActionError(null);
     setEndingSessionIds(previous => (previous.includes(sessionId) ? previous : [...previous, sessionId]));
-    completeSession(sessionId)
-      .then(() => refreshMonitoringNow())
-      .catch(error => {
-        const message = error instanceof Error ? error.message : 'Unable to end focus session.';
-        setSessionActionError(message);
-        if (__DEV__) {
-          console.warn('[FocusModeScreen] Failed to end focus session.', error);
-        }
-      })
-      .finally(() => {
-        setEndingSessionIds(previous => previous.filter(id => id !== sessionId));
-      });
+    try {
+      await completeSession(sessionId);
+      await refreshMonitoringNow();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to end focus session.';
+      setSessionActionError(message);
+      if (__DEV__) {
+        console.warn('[FocusModeScreen] Failed to end focus session.', error);
+      }
+    } finally {
+      setEndingSessionIds(previous => previous.filter(id => id !== sessionId));
+    }
   }, [completeSession]);
 
   return (
@@ -463,7 +529,9 @@ export function FocusModeScreen(): React.JSX.Element {
 
         <PrimaryButton
           label={hasActiveSelectedApp ? 'Session Already Active' : 'Start Focus'}
-          onPress={handleStartFocus}
+          onPress={() => {
+            handleStartFocus();
+          }}
           disabled={hasActiveSelectedApp || isStarting}
         />
       </SectionCard>
@@ -478,7 +546,9 @@ export function FocusModeScreen(): React.JSX.Element {
                 nowMs={nowMs}
                 isDark={isDark}
                 isEnding={endingSessionIds.includes(session.id)}
-                onComplete={handleCompleteSession}
+                onComplete={sessionId => {
+                  handleCompleteSession(sessionId);
+                }}
               />
             ))}
           </View>
@@ -834,6 +904,9 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     overflow: 'hidden',
   },
+  progressTrackBlocked: {
+    backgroundColor: '#2B1215',
+  },
   progressTrackDark: {
     backgroundColor: '#263244',
   },
@@ -849,6 +922,33 @@ const styles = StyleSheet.create({
   },
   progressFillBlocked: {
     backgroundColor: colors.danger,
+  },
+  phaseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  phaseLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+  },
+  phaseLabelDark: {
+    color: '#CBD5E1',
+  },
+  phaseLabelLight: {
+    color: '#475569',
+  },
+  phaseValue: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  phaseValueDark: {
+    color: '#94A3B8',
+  },
+  phaseValueLight: {
+    color: '#64748B',
   },
   sessionFooter: {
     flexDirection: 'row',

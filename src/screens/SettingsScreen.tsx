@@ -33,12 +33,20 @@ type LimitControlProps = {
   onIncrease: () => void;
 };
 
-function formatSessionMeta(session: FocusSession): string {
+function formatSessionMeta(session: FocusSession, nowMs: number): string {
   if (session.status === 'blocked' && session.blockedUntil) {
-    return `Blocked until ${new Date(session.blockedUntil).toLocaleTimeString([], {
+    const remainingSeconds = Math.max(Math.ceil((session.blockedUntil - nowMs) / 1000), 0);
+    return `Blocked ${Math.ceil(remainingSeconds / 60)} min left · unlocks at ${new Date(session.blockedUntil).toLocaleTimeString([], {
       hour: '2-digit',
       minute: '2-digit',
     })}`;
+  }
+
+  if (session.status === 'blocked') {
+    const blockedAt = session.blockedAt ?? session.updatedAt;
+    const elapsedSeconds = Math.max(Math.floor((nowMs - blockedAt) / 1000), 0);
+    const remainingSeconds = Math.max(session.blockDurationSeconds - elapsedSeconds, 0);
+    return `Blocked ${Math.ceil(remainingSeconds / 60)} min left`;
   }
 
   if (session.status === 'tracking') {
@@ -231,6 +239,18 @@ export function SettingsScreen(): React.JSX.Element {
     }
   }, [refreshLocksAfterAction, setDailyLimitEnabled]);
 
+  const handleEndSession = React.useCallback(async (sessionId: string): Promise<void> => {
+    try {
+      await completeSession(sessionId);
+    } catch (error) {
+      if (__DEV__) {
+        console.warn('[SettingsScreen] End session action failed.', error);
+      }
+    } finally {
+      refreshLocksAfterAction();
+    }
+  }, [completeSession, refreshLocksAfterAction]);
+
   return (
     <AppScreen>
       <SectionCard>
@@ -248,7 +268,9 @@ export function SettingsScreen(): React.JSX.Element {
             <PrimaryButton
               label={dailyLimitEnabled ? 'Stop Daily Limit' : 'Start Daily Limit'}
               variant={dailyLimitEnabled ? 'secondary' : 'primary'}
-              onPress={dailyLimitEnabled ? handleStopDailyLimit : handleStartDailyLimit}
+              onPress={() => {
+                dailyLimitEnabled ? handleStopDailyLimit() : handleStartDailyLimit();
+              }}
               disabled={isTogglingDailyLimit}
             />
           </View>
@@ -368,18 +390,14 @@ export function SettingsScreen(): React.JSX.Element {
                 </View>
                 <View style={styles.lockCopy}>
                   <Text style={styles.lockName}>{session.appName}</Text>
-                  <Text style={styles.lockMeta}>{formatSessionMeta(session)}</Text>
+                  <Text style={styles.lockMeta}>{formatSessionMeta(session, nowMs)}</Text>
                 </View>
               </View>
               <PrimaryButton
                 label={session.status === 'blocked' ? 'Unlock' : 'End'}
                 variant="ghost"
                 onPress={() => {
-                  completeSession(session.id).catch(error => {
-                    if (__DEV__) {
-                      console.warn('[SettingsScreen] End session action failed.', error);
-                    }
-                  }).finally(refreshLocksAfterAction);
+                  handleEndSession(session.id);
                 }}
               />
             </View>

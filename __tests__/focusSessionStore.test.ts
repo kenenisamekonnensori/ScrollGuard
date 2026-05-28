@@ -81,6 +81,22 @@ describe('focusSessionStore', () => {
     ).rejects.toThrow('A focus session is already active for this app.');
   });
 
+  test('starts a tracking session even when usage snapshot is unavailable', async () => {
+    mockFetchTodayUsage.mockRejectedValue(new Error('Usage access missing'));
+
+    const { useFocusSessionStore } = getStoreModule();
+
+    const session = await useFocusSessionStore.getState().startFocusSession({
+      appFamily: 'instagram',
+      allowedUsageMinutes: 10,
+      blockDurationMinutes: 30,
+    });
+
+    expect(session.status).toBe('tracking');
+    expect(session.baselineUsageSeconds).toBe(0);
+    expect(mockBlockApp).not.toHaveBeenCalled();
+  });
+
   test('restores active sessions from persisted storage after process restart', () => {
     const now = Date.now();
     mockGetValue.mockReturnValue([

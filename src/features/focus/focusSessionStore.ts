@@ -175,7 +175,13 @@ async function blockSessionApps(session: FocusSession): Promise<void> {
 }
 
 async function completeExpiredBlock(session: FocusSession, timestamp: number): Promise<FocusSession> {
-  await unblockAppFamily(session.packageName, 'focus');
+  try {
+    await unblockAppFamily(session.packageName, 'focus');
+  } catch (error) {
+    if (__DEV__) {
+      console.warn('[focusSessionStore] Failed to release expired focus block.', error);
+    }
+  }
 
   return {
     ...session,
@@ -235,7 +241,13 @@ async function reconcileSession(session: FocusSession, timestamp: number): Promi
     updatedAt: timestamp,
   };
 
-  await blockSessionApps(blockedSession);
+  try {
+    await blockSessionApps(blockedSession);
+  } catch (error) {
+    if (__DEV__) {
+      console.warn('[focusSessionStore] Failed to apply native focus block.', error);
+    }
+  }
   sendLimitReachedNotification(session.appName);
   return blockedSession;
 }
@@ -251,8 +263,18 @@ export const useFocusSessionStore = create<FocusSessionState>((set, get) => ({
     }
 
     const metadata = getAppMetadata(input.appFamily);
-    const usageStats = await fetchTodayUsage();
     const timestamp = now();
+    let baselineUsageSeconds = 0;
+
+    try {
+      const usageStats = await fetchTodayUsage();
+      baselineUsageSeconds = sanitizeNumber(usageStats[metadata.packageName]);
+    } catch (error) {
+      if (__DEV__) {
+        console.warn('[focusSessionStore] Failed to read baseline usage for focus session start.', error);
+      }
+    }
+
     const session: FocusSession = {
       id: `${input.appFamily}-${timestamp}`,
       appFamily: input.appFamily,
@@ -262,7 +284,7 @@ export const useFocusSessionStore = create<FocusSessionState>((set, get) => ({
       status: 'tracking',
       allowedUsageSeconds: toSeconds(input.allowedUsageMinutes),
       blockDurationSeconds: toSeconds(input.blockDurationMinutes),
-      baselineUsageSeconds: sanitizeNumber(usageStats[metadata.packageName]),
+      baselineUsageSeconds,
       consumedUsageSeconds: 0,
       warningThresholdsSent: [],
       startedAt: timestamp,
@@ -300,7 +322,14 @@ export const useFocusSessionStore = create<FocusSessionState>((set, get) => ({
       }
 
       const timestamp = now();
-      const nativeLocks = await getResolvedAppLocks();
+      let nativeLocks: Array<{ packageName: string }> = [];
+      try {
+        nativeLocks = await getResolvedAppLocks();
+      } catch (error) {
+        if (__DEV__) {
+          console.warn('[focusSessionStore] Failed to read native lock state.', error);
+        }
+      }
       const latestSessions = get().sessions;
       const reconciled = await Promise.all(
         latestSessions.map(async session => {
@@ -331,7 +360,13 @@ export const useFocusSessionStore = create<FocusSessionState>((set, get) => ({
     }
 
     if (targetSession.status === 'blocked') {
-      await unblockAppFamily(targetSession.packageName, 'focus');
+      try {
+        await unblockAppFamily(targetSession.packageName, 'focus');
+      } catch (error) {
+        if (__DEV__) {
+          console.warn('[focusSessionStore] Failed to clear native focus block while ending session.', error);
+        }
+      }
     }
 
     const timestamp = now();
