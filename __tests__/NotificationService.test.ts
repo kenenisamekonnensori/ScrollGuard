@@ -56,4 +56,14 @@ describe('NotificationService', () => {
     expect(mockSetValue).not.toHaveBeenCalled();
     expect(mockPostLocalNotification).not.toHaveBeenCalled();
   });
+
+  test('swallows synchronous native notification failures', () => {
+    mockPostLocalNotification.mockImplementation(() => {
+      throw new TypeError('undefined is not a function');
+    });
+
+    const { sendLimitReachedNotification } = require('../src/services/NotificationService');
+
+    expect(() => sendLimitReachedNotification('Instagram')).not.toThrow();
+  });
 });

@@ -61,11 +61,17 @@ function postLocalNotification(payload: NotificationPayload): void {
 
   const item = persistNotification(payload);
 
-  postNativeLocalNotification(item.title, item.body).catch(error => {
+  try {
+    postNativeLocalNotification(item.title, item.body).catch(error => {
+      if (__DEV__) {
+        console.warn('[NotificationService] Failed to post local notification.', error);
+      }
+    });
+  } catch (error) {
     if (__DEV__) {
       console.warn('[NotificationService] Failed to post local notification.', error);
     }
-  });
+  }
 }
 
 export function getDeliveredNotificationHistory(): NotificationHistoryItem[] {
