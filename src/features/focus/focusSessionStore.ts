@@ -154,6 +154,19 @@ function getConsumedUsageSeconds(session: FocusSession): number {
   return Math.max(currentUsageSeconds - session.baselineUsageSeconds, 0);
 }
 
+function estimateConsumedUsageSeconds(session: FocusSession, timestamp: number): number {
+  const usageBasedSeconds = getConsumedUsageSeconds(session);
+  const elapsedSinceUpdateSeconds = Math.max(
+    Math.floor((timestamp - session.updatedAt) / 1000),
+    0,
+  );
+  const timeBasedSeconds = session.status === 'tracking'
+    ? session.consumedUsageSeconds + elapsedSinceUpdateSeconds
+    : session.consumedUsageSeconds;
+
+  return Math.max(usageBasedSeconds, timeBasedSeconds);
+}
+
 async function blockSessionApps(session: FocusSession): Promise<void> {
   const durationMinutes = Math.ceil(session.blockDurationSeconds / 60);
   await Promise.all(
@@ -189,7 +202,7 @@ async function reconcileSession(session: FocusSession, timestamp: number): Promi
     };
   }
 
-  const consumedUsageSeconds = getConsumedUsageSeconds(session);
+  const consumedUsageSeconds = estimateConsumedUsageSeconds(session, timestamp);
   const usagePercent = session.allowedUsageSeconds > 0
     ? (consumedUsageSeconds / session.allowedUsageSeconds) * 100
     : 100;
@@ -277,7 +290,13 @@ export const useFocusSessionStore = create<FocusSessionState>((set, get) => ({
 
     try {
       if (hasTrackingSession && !options.skipUsageRefresh) {
-        await fetchTodayUsage();
+        try {
+          await fetchTodayUsage();
+        } catch (error) {
+          if (__DEV__) {
+            console.warn('[focusSessionStore] Failed to refresh usage snapshot; falling back to elapsed tracking.', error);
+          }
+        }
       }
 
       const timestamp = now();

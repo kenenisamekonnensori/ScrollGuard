@@ -76,12 +76,17 @@ function getRemainingBlockSeconds(session: FocusSession, nowMs: number): number 
   return Math.max(Math.ceil((session.blockedUntil - nowMs) / 1000), 0);
 }
 
-function getUsageProgress(session: FocusSession): number {
-  if (session.allowedUsageSeconds <= 0) {
-    return 1;
+function getEffectiveConsumedUsageSeconds(session: FocusSession, nowMs: number): number {
+  if (session.status !== 'tracking') {
+    return session.consumedUsageSeconds;
   }
 
-  return Math.min(session.consumedUsageSeconds / session.allowedUsageSeconds, 1);
+  const elapsedSinceStartSeconds = Math.max(
+    Math.floor((nowMs - session.startedAt) / 1000),
+    0,
+  );
+
+  return Math.max(session.consumedUsageSeconds, elapsedSinceStartSeconds);
 }
 
 function isActiveSession(session: FocusSession): boolean {
@@ -142,16 +147,19 @@ function FocusSessionCard({
   onComplete: (sessionId: string) => void;
 }): React.JSX.Element {
   // Card-level derived values are memoized so each poll tick only updates what changed.
-  const progress = getUsageProgress(session);
-  const remainingUsageSeconds = Math.max(
-    session.allowedUsageSeconds - session.consumedUsageSeconds,
-    0,
-  );
-  const remainingBlockSeconds = getRemainingBlockSeconds(session, nowMs);
-  const progressWidthStyle = React.useMemo(
-    () => ({
-      width: `${Math.max(progress * 100, session.status === 'tracking' ? 4 : 0)}%` as DimensionValue,
-    }),
+const effectiveConsumedUsageSeconds = getEffectiveConsumedUsageSeconds(session, nowMs);
+const progress = session.allowedUsageSeconds > 0
+  ? Math.min(effectiveConsumedUsageSeconds / session.allowedUsageSeconds, 1)
+  : 1;
+const remainingUsageSeconds = Math.max(
+  session.allowedUsageSeconds - effectiveConsumedUsageSeconds,
+  0,
+);
+const remainingBlockSeconds = getRemainingBlockSeconds(session, nowMs);
+const progressWidthStyle = React.useMemo(
+  () => ({
+    width: `${Math.max(progress * 100, session.status === 'tracking' ? 4 : 0)}%` as DimensionValue,
+  }),
     [progress, session.status],
   );
 
@@ -209,7 +217,7 @@ function FocusSessionCard({
         <Text style={[styles.sessionMeta, isDark ? styles.sessionMetaDark : styles.sessionMetaLight]}>
           {session.status === 'blocked'
             ? `Unlocks at ${formatClock(session.blockedUntil)}`
-            : `${formatMinutesFromSeconds(session.consumedUsageSeconds)} used`}
+            : `${formatMinutesFromSeconds(effectiveConsumedUsageSeconds)} used`}
         </Text>
         {session.status !== 'completed' ? (
           <Pressable disabled={isEnding} onPress={() => onComplete(session.id)} hitSlop={8}>

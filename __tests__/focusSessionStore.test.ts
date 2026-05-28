@@ -140,6 +140,37 @@ describe('focusSessionStore', () => {
     expect(mockBlockApp).toHaveBeenCalledWith(MONITORED_PACKAGE_GROUPS.instagram[1], 15, 'focus');
   });
 
+  test('continues advancing tracking sessions from elapsed time when usage refresh fails', async () => {
+    const now = Date.now();
+    mockGetValue.mockReturnValue([
+      {
+        id: 'instagram-tracking',
+        appFamily: 'instagram',
+        status: 'tracking',
+        allowedUsageSeconds: 60,
+        blockDurationSeconds: 900,
+        baselineUsageSeconds: 120,
+        consumedUsageSeconds: 0,
+        warningThresholdsSent: [],
+        startedAt: now - 61_000,
+        updatedAt: now - 61_000,
+        blockedAt: null,
+        blockedUntil: null,
+        completedAt: null,
+      },
+    ]);
+    mockFetchTodayUsage.mockRejectedValue(new Error('Usage access missing'));
+
+    const { useFocusSessionStore } = getStoreModule();
+
+    await useFocusSessionStore.getState().refreshFocusSessions();
+
+    const [session] = useFocusSessionStore.getState().sessions;
+    expect(session.status).toBe('blocked');
+    expect(session.consumedUsageSeconds).toBeGreaterThanOrEqual(60);
+    expect(mockBlockApp).toHaveBeenCalledWith(MONITORED_PACKAGES.instagram, 15, 'focus');
+  });
+
   test('completes expired blocked sessions without returning to tracking', async () => {
     const now = Date.now();
     mockGetValue.mockReturnValue([
