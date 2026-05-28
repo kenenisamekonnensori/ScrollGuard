@@ -287,12 +287,16 @@ export function FocusModeScreen(): React.JSX.Element {
     [sessions],
   );
   const hasAnyActiveSession = activeSessions.length > 0;
+  const hasTrackingSession = React.useMemo(
+    () => sessions.some(session => session.status === 'tracking'),
+    [sessions],
+  );
 
   // Keep UI polling scoped to screen focus so hidden tabs do not continue background refresh work.
   useFocusEffect(
     React.useCallback(() => {
       setNowMs(Date.now());
-      refreshFocusSessions().catch(error => {
+      refreshFocusSessions({ skipUsageRefresh: !hasTrackingSession }).catch(error => {
         if (__DEV__) {
           console.warn('[FocusModeScreen] Failed to refresh focus sessions.', error);
         }
@@ -301,7 +305,7 @@ export function FocusModeScreen(): React.JSX.Element {
       const pollIntervalMs = hasAnyActiveSession ? ACTIVE_POLL_INTERVAL_MS : IDLE_POLL_INTERVAL_MS;
       const timer = setInterval(() => {
         setNowMs(Date.now());
-        refreshFocusSessions().catch(error => {
+        refreshFocusSessions({ skipUsageRefresh: !hasTrackingSession }).catch(error => {
           if (__DEV__) {
             console.warn('[FocusModeScreen] Scheduled focus refresh failed.', error);
           }
@@ -311,7 +315,7 @@ export function FocusModeScreen(): React.JSX.Element {
       return () => {
         clearInterval(timer);
       };
-    }, [hasAnyActiveSession, refreshFocusSessions]),
+    }, [hasAnyActiveSession, hasTrackingSession, refreshFocusSessions]),
   );
 
   // Completed list is sorted by completion timestamp so "Recent Completions" is always accurate.

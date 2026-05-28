@@ -3,6 +3,7 @@ const mockEnforceDailyLimitBlocks = jest.fn();
 const mockFetchTodayUsage = jest.fn();
 const mockRefreshFocusSessions = jest.fn();
 const mockHasActiveFocusSessions = jest.fn();
+const mockHasTrackingFocusSessions = jest.fn();
 const mockSetLastSyncedAt = jest.fn();
 const mockUseSettingsStoreGetState = jest.fn();
 const mockUseUsageStoreGetState = jest.fn();
@@ -18,6 +19,7 @@ jest.mock('../src/services/UsageService', () => ({
 
 jest.mock('../src/features/focus/focusSessionStore', () => ({
   hasActiveFocusSessions: (...args: unknown[]) => mockHasActiveFocusSessions(...args),
+  hasTrackingFocusSessions: (...args: unknown[]) => mockHasTrackingFocusSessions(...args),
   refreshFocusSessions: (...args: unknown[]) => mockRefreshFocusSessions(...args),
   hasTrackingFocusSessionForPackage: jest.fn(() => false),
 }));
@@ -61,6 +63,7 @@ describe('MonitoringService.refreshMonitoringNow', () => {
     });
 
     mockHasActiveFocusSessions.mockReturnValue(false);
+    mockHasTrackingFocusSessions.mockReturnValue(false);
     mockFetchTodayUsage.mockResolvedValue({
       'com.instagram.android': 120,
       'com.zhiliaoapp.musically': 0,
@@ -113,6 +116,7 @@ describe('MonitoringService.refreshMonitoringNow', () => {
 
   test('refreshes usage and skips the nested usage fetch when focus sessions are active', async () => {
     mockHasActiveFocusSessions.mockReturnValue(true);
+    mockHasTrackingFocusSessions.mockReturnValue(true);
 
     const { refreshMonitoringNow } = getService();
 
@@ -120,6 +124,18 @@ describe('MonitoringService.refreshMonitoringNow', () => {
 
     expect(mockFetchTodayUsage).toHaveBeenCalledTimes(1);
     expect(mockSetLastSyncedAt).toHaveBeenCalledTimes(1);
+    expect(mockRefreshFocusSessions).toHaveBeenCalledWith({ skipUsageRefresh: true });
+  });
+
+  test('refreshes blocked focus sessions without forcing a usage fetch', async () => {
+    mockHasActiveFocusSessions.mockReturnValue(true);
+    mockHasTrackingFocusSessions.mockReturnValue(false);
+
+    const { refreshMonitoringNow } = getService();
+
+    await refreshMonitoringNow();
+
+    expect(mockFetchTodayUsage).not.toHaveBeenCalled();
     expect(mockRefreshFocusSessions).toHaveBeenCalledWith({ skipUsageRefresh: true });
   });
 

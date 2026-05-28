@@ -341,6 +341,10 @@ export function hasActiveFocusSessions(): boolean {
   return getActiveFocusSessions().length > 0;
 }
 
+export function hasTrackingFocusSessions(): boolean {
+  return getFocusSessions().some(session => session.status === 'tracking');
+}
+
 export function hasTrackingFocusSessionForPackage(packageName: string): boolean {
   return getFocusSessions().some(session => (
     session.status === 'tracking' && session.packageNames.includes(packageName)

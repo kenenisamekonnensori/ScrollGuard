@@ -1,10 +1,8 @@
-import { Platform } from 'react-native';
-import { Notifications } from 'react-native-notifications';
 import { getValue, setValue } from '../db/storage';
 import { getRandomMotivation } from '../features/motivation/motivationEngine';
+import { postLocalNotification as postNativeLocalNotification } from '../native/NativeBridgeService';
 
 const NOTIFICATION_HISTORY_STORAGE_KEY = 'notificationHistory';
-const NOTIFICATION_CHANNEL_ID = 'scrollguard-alerts';
 const MAX_NOTIFICATION_HISTORY = 50;
 
 export type NotificationSeverity = 'info' | 'warning' | 'danger';
@@ -26,48 +24,12 @@ type NotificationPayload = {
   dedupeWindowMs?: number;
 };
 
-let didInitializeNotifications = false;
-
 function getNotificationHistory(): NotificationHistoryItem[] {
   return getValue<NotificationHistoryItem[]>(NOTIFICATION_HISTORY_STORAGE_KEY) ?? [];
 }
 
 function saveNotificationHistory(history: NotificationHistoryItem[]): void {
   setValue(NOTIFICATION_HISTORY_STORAGE_KEY, history.slice(-MAX_NOTIFICATION_HISTORY));
-}
-
-function initializeNotificationsIfNeeded(): void {
-  if (didInitializeNotifications) {
-    return;
-  }
-
-  didInitializeNotifications = true;
-
-  try {
-    Notifications.registerRemoteNotifications();
-  } catch (error) {
-    if (__DEV__) {
-      console.warn('[NotificationService] Failed to request notification permissions.', error);
-    }
-  }
-
-  if (Platform.OS === 'android') {
-    try {
-      Notifications.setNotificationChannel({
-        channelId: NOTIFICATION_CHANNEL_ID,
-        name: 'ScrollGuard Alerts',
-        importance: 4,
-        description: 'Usage warnings, lock events, and release updates',
-        enableLights: true,
-        enableVibration: true,
-        showBadge: true,
-      });
-    } catch (error) {
-      if (__DEV__) {
-        console.warn('[NotificationService] Failed to create Android notification channel.', error);
-      }
-    }
-  }
 }
 
 function wasRecentlySent(dedupeKey: string, dedupeWindowMs: number): boolean {
@@ -92,8 +54,6 @@ function persistNotification(payload: NotificationPayload): NotificationHistoryI
 }
 
 function postLocalNotification(payload: NotificationPayload): void {
-  initializeNotificationsIfNeeded();
-
   const dedupeWindowMs = payload.dedupeWindowMs ?? 15 * 60_000;
   if (wasRecentlySent(payload.dedupeKey, dedupeWindowMs)) {
     return;
@@ -101,18 +61,11 @@ function postLocalNotification(payload: NotificationPayload): void {
 
   const item = persistNotification(payload);
 
-  try {
-    Notifications.postLocalNotification({
-      title: item.title,
-      body: item.body,
-      sound: 'default',
-      channelId: NOTIFICATION_CHANNEL_ID,
-    } as any);
-  } catch (error) {
+  postNativeLocalNotification(item.title, item.body).catch(error => {
     if (__DEV__) {
       console.warn('[NotificationService] Failed to post local notification.', error);
     }
-  }
+  });
 }
 
 export function getDeliveredNotificationHistory(): NotificationHistoryItem[] {

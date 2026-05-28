@@ -81,6 +81,42 @@ describe('focusSessionStore', () => {
     ).rejects.toThrow('A focus session is already active for this app.');
   });
 
+  test('restores active sessions from persisted storage after process restart', () => {
+    const now = Date.now();
+    mockGetValue.mockReturnValue([
+      {
+        id: 'instagram-active',
+        appFamily: 'instagram',
+        status: 'tracking',
+        allowedUsageSeconds: 600,
+        blockDurationSeconds: 1800,
+        baselineUsageSeconds: 120,
+        consumedUsageSeconds: 90,
+        warningThresholdsSent: [50],
+        startedAt: now - 90_000,
+        updatedAt: now - 1_000,
+        blockedAt: null,
+        blockedUntil: null,
+        completedAt: null,
+      },
+    ]);
+
+    const { useFocusSessionStore, hasActiveFocusSessions } = getStoreModule();
+
+    const [session] = useFocusSessionStore.getState().sessions;
+    expect(session).toEqual(
+      expect.objectContaining({
+        id: 'instagram-active',
+        appFamily: 'instagram',
+        packageName: MONITORED_PACKAGES.instagram,
+        packageNames: MONITORED_PACKAGE_GROUPS.instagram,
+        appName: 'Instagram',
+        status: 'tracking',
+      }),
+    );
+    expect(hasActiveFocusSessions()).toBe(true);
+  });
+
   test('moves tracking session to blocked after allowed usage is consumed', async () => {
     const { useFocusSessionStore } = getStoreModule();
 

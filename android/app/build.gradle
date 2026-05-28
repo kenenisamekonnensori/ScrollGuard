@@ -107,14 +107,14 @@ android {
         versionCode 1
         versionName "1.0"
     }
-    // splits {
-    //     abi {
-    //         reset()
-    //         enable true
-    //         universalApk false
-    //         include "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
-    //     }
-    // }
+    splits {
+        abi {
+            reset()
+            enable true
+            universalApk false
+            include "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+        }
+    }
     signingConfigs {
         debug {
             storeFile file('debug.keystore')
@@ -143,16 +143,16 @@ android {
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
     }
-    // def abiVersionCodes = ["armeabi-v7a": 1, "arm64-v8a": 2, "x86": 3, "x86_64": 4]
+    def abiVersionCodes = ["armeabi-v7a": 1, "arm64-v8a": 2, "x86": 3, "x86_64": 4]
 
-    // applicationVariants.all { variant ->
-    //     variant.outputs.each { output ->
-    //         def abi = output.getFilter(com.android.build.OutputFile.ABI)
-    //         if (abi != null) {
-    //             output.versionCodeOverride = defaultConfig.versionCode * 1048576 + abiVersionCodes.get(abi)
-    //         }
-    //     }
-    // }
+    applicationVariants.all { variant ->
+        variant.outputs.each { output ->
+            def abi = output.getFilter(com.android.build.OutputFile.ABI)
+            if (abi != null) {
+                output.versionCodeOverride = defaultConfig.versionCode * 1048576 + abiVersionCodes.get(abi)
+            }
+        }
+    }
 }
 
 tasks.register("verifyReleaseBuildConfig") {

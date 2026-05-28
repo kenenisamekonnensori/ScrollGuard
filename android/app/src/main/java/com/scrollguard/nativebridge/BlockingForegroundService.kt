@@ -11,8 +11,10 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.scrollguard.MainActivity
+import com.scrollguard.BuildConfig
 import com.scrollguard.R
 
 class BlockingForegroundService : Service() {
@@ -25,16 +27,23 @@ class BlockingForegroundService : Service() {
   }
 
   companion object {
+    private const val TAG = "ScrollGuardProtection"
     private const val CHANNEL_ID = "scrollguard_blocker_channel"
     private const val CHANNEL_NAME = "ScrollGuard Protection"
     private const val NOTIFICATION_ID = 1107
 
     fun start(context: Context) {
-      val intent = Intent(context, BlockingForegroundService::class.java)
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        context.startForegroundService(intent)
-      } else {
-        context.startService(intent)
+      try {
+        val intent = Intent(context, BlockingForegroundService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+          context.startForegroundService(intent)
+        } else {
+          context.startService(intent)
+        }
+      } catch (error: Exception) {
+        if (BuildConfig.DEBUG) {
+          Log.w(TAG, "Unable to start foreground protection service.", error)
+        }
       }
     }
 
@@ -49,7 +58,11 @@ class BlockingForegroundService : Service() {
   }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-    startForeground(NOTIFICATION_ID, buildNotification())
+    if (!startForegroundSafely()) {
+      stopSelf(startId)
+      return START_NOT_STICKY
+    }
+
     handler.removeCallbacks(cleanupRunnable)
     handler.post(cleanupRunnable)
     return START_STICKY
@@ -82,6 +95,18 @@ class BlockingForegroundService : Service() {
     }
 
     manager.createNotificationChannel(channel)
+  }
+
+  private fun startForegroundSafely(): Boolean {
+    return try {
+      startForeground(NOTIFICATION_ID, buildNotification())
+      true
+    } catch (error: Exception) {
+      if (BuildConfig.DEBUG) {
+        Log.e(TAG, "Unable to enter foreground mode for protection service.", error)
+      }
+      false
+    }
   }
 
   private fun buildNotification(): Notification {

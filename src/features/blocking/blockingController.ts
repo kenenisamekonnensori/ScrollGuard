@@ -57,7 +57,8 @@ function sanitizeLockedUntil(value: unknown): number | undefined {
 }
 
 function getPackageGroup(app: string): readonly string[] {
-  return Object.values(MONITORED_PACKAGE_GROUPS).find(group => group.includes(app)) ?? [app];
+  const packageGroups: readonly (readonly string[])[] = Object.values(MONITORED_PACKAGE_GROUPS);
+  return packageGroups.find(group => group.includes(app)) ?? [app];
 }
 
 function normalizeLockSourceState(value: unknown): LockSourceState {

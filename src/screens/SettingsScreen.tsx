@@ -4,7 +4,11 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { AppScreen } from '../components/ui/AppScreen';
 import { PrimaryButton } from '../components/ui/PrimaryButton';
 import { SectionCard } from '../components/ui/SectionCard';
-import { clearLockSourceForAllApps } from '../features/blocking/blockingController';
+import {
+  ResolvedAppLock,
+  clearLockSourceForAllApps,
+  getResolvedAppLocks,
+} from '../features/blocking/blockingController';
 import { useFocusSessionStore } from '../features/focus/focusSessionStore';
 import { FocusSession } from '../features/focus/focusSessionTypes';
 import { refreshMonitoringNow } from '../services/MonitoringService';
@@ -46,6 +50,40 @@ function formatSessionMeta(session: FocusSession): string {
   }
 
   return 'Completed';
+}
+
+function formatRemainingLockDuration(lockedUntil: number | null, nowMs: number): string {
+  if (!lockedUntil) {
+    return 'Blocked now';
+  }
+
+  const remainingSeconds = Math.max(Math.ceil((lockedUntil - nowMs) / 1000), 0);
+  if (remainingSeconds <= 0) {
+    return 'Unlocking now';
+  }
+
+  const remainingMinutes = Math.ceil(remainingSeconds / 60);
+  if (remainingMinutes >= 60) {
+    const hours = Math.floor(remainingMinutes / 60);
+    const minutes = remainingMinutes % 60;
+    return minutes > 0 ? `${hours}h ${minutes}m remaining` : `${hours}h remaining`;
+  }
+
+  return `${remainingMinutes} min remaining`;
+}
+
+function formatLockMeta(lock: ResolvedAppLock, nowMs: number): string {
+  const duration = formatRemainingLockDuration(lock.lockedUntil, nowMs);
+  if (!lock.lockedUntil) {
+    return duration;
+  }
+
+  const unlockTime = new Date(lock.lockedUntil).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  return `${duration} - unlocks at ${unlockTime}`;
 }
 
 function LimitControl({
@@ -92,8 +130,14 @@ export function SettingsScreen(): React.JSX.Element {
   const sessions = useFocusSessionStore(state => state.sessions);
   const refreshFocusSessions = useFocusSessionStore(state => state.refreshFocusSessions);
   const completeSession = useFocusSessionStore(state => state.completeSession);
+  const hasTrackingSession = React.useMemo(
+    () => sessions.some(session => session.status === 'tracking'),
+    [sessions],
+  );
   const [dailyLimitError, setDailyLimitError] = React.useState<string | null>(null);
   const [isTogglingDailyLimit, setIsTogglingDailyLimit] = React.useState(false);
+  const [activeLocks, setActiveLocks] = React.useState<ResolvedAppLock[]>([]);
+  const [nowMs, setNowMs] = React.useState(() => Date.now());
 
   const adjustLimit = (key: SettingLimitKey, delta: number, min: number, max: number): void => {
     const nextValue = Math.max(min, Math.min(max, userSettings[key] + delta));
@@ -102,28 +146,44 @@ export function SettingsScreen(): React.JSX.Element {
 
   useFocusEffect(
     useCallback(() => {
-      refreshFocusSessions().catch(error => {
-        if (__DEV__) {
-          console.warn('[SettingsScreen] Initial focus-session refresh failed.', error);
-        }
-      });
-
-      const interval = setInterval(() => {
-        refreshFocusSessions().catch(error => {
+      const refreshProtectionStatus = (): void => {
+        setNowMs(Date.now());
+        Promise.all([
+          refreshFocusSessions({ skipUsageRefresh: !hasTrackingSession }),
+          getResolvedAppLocks().then(setActiveLocks),
+        ]).catch(error => {
           if (__DEV__) {
-            console.warn('[SettingsScreen] Scheduled focus-session refresh failed.', error);
+            console.warn('[SettingsScreen] Failed to refresh protection status.', error);
           }
         });
+      };
+
+      refreshProtectionStatus();
+
+      const interval = setInterval(() => {
+        refreshProtectionStatus();
       }, ACTIVE_SESSIONS_REFRESH_MS);
 
       return () => {
         clearInterval(interval);
       };
-    }, [refreshFocusSessions]),
+    }, [hasTrackingSession, refreshFocusSessions]),
   );
+
+  const refreshLocksAfterAction = React.useCallback((): void => {
+    setNowMs(Date.now());
+    getResolvedAppLocks()
+      .then(setActiveLocks)
+      .catch(error => {
+        if (__DEV__) {
+          console.warn('[SettingsScreen] Failed to refresh app locks.', error);
+        }
+      });
+  }, []);
 
   const activeSessions = sessions.filter(session => session.status !== 'completed');
   const blockedSessionCount = activeSessions.filter(session => session.status === 'blocked').length;
+  const blockedAppCount = activeLocks.length;
 
   const averageDailyLimit = Math.round(
     (userSettings.tiktokLimitMinutes
@@ -139,6 +199,7 @@ export function SettingsScreen(): React.JSX.Element {
     try {
       setDailyLimitEnabled(true);
       await refreshMonitoringNow();
+      refreshLocksAfterAction();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to start daily limits.';
       setDailyLimitError(message);
@@ -148,7 +209,7 @@ export function SettingsScreen(): React.JSX.Element {
     } finally {
       setIsTogglingDailyLimit(false);
     }
-  }, [setDailyLimitEnabled]);
+  }, [refreshLocksAfterAction, setDailyLimitEnabled]);
 
   const handleStopDailyLimit = React.useCallback(async (): Promise<void> => {
     setDailyLimitError(null);
@@ -158,6 +219,7 @@ export function SettingsScreen(): React.JSX.Element {
       await clearLockSourceForAllApps('dailyLimit');
       setDailyLimitEnabled(false);
       await refreshMonitoringNow();
+      refreshLocksAfterAction();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to stop daily limits.';
       setDailyLimitError(message);
@@ -167,7 +229,7 @@ export function SettingsScreen(): React.JSX.Element {
     } finally {
       setIsTogglingDailyLimit(false);
     }
-  }, [setDailyLimitEnabled]);
+  }, [refreshLocksAfterAction, setDailyLimitEnabled]);
 
   return (
     <AppScreen>
@@ -239,7 +301,7 @@ export function SettingsScreen(): React.JSX.Element {
       <SectionCard title="Protection Status">
         <View style={styles.statusHero}>
           <Text style={styles.statusHeroTitle}>
-            {blockedSessionCount > 0
+            {blockedAppCount > 0 || blockedSessionCount > 0
               ? 'Focus shield blocking'
               : activeSessions.length > 0
                 ? 'Focus shield tracking'
@@ -248,7 +310,9 @@ export function SettingsScreen(): React.JSX.Element {
                   : 'Protection paused'}
           </Text>
           <Text style={styles.statusHeroText}>
-            {activeSessions.length > 0
+            {blockedAppCount > 0
+              ? `${blockedAppCount} app${blockedAppCount > 1 ? 's are' : ' is'} blocked now`
+              : activeSessions.length > 0
               ? `${activeSessions.length} manual session${activeSessions.length > 1 ? 's are' : ' is'} active`
               : dailyLimitEnabled
                 ? 'Daily limits are active and focus sessions remain separate.'
@@ -267,6 +331,30 @@ export function SettingsScreen(): React.JSX.Element {
           onDecrease={() => adjustLimit('lockDurationMinutes', -5, 5, 120)}
           onIncrease={() => adjustLimit('lockDurationMinutes', 5, 5, 120)}
         />
+      </SectionCard>
+
+      <Text style={styles.sectionLabel}>Blocked Apps</Text>
+      <SectionCard title="Current Blocks">
+        {activeLocks.length > 0 ? (
+          activeLocks.map(lock => (
+            <View key={lock.packageName} style={styles.lockRow}>
+              <View style={styles.lockLeft}>
+                <View style={styles.lockIconWrap}>
+                  <Text style={styles.lockIcon}>{PACKAGE_ICONS[lock.packageName] ?? '📱'}</Text>
+                </View>
+                <View style={styles.lockCopy}>
+                  <Text style={styles.lockName}>{lock.appName}</Text>
+                  <Text style={styles.lockMeta}>{formatLockMeta(lock, nowMs)}</Text>
+                </View>
+              </View>
+              <View style={styles.lockBadge}>
+                <Text style={styles.lockBadgeText}>Blocked</Text>
+              </View>
+            </View>
+          ))
+        ) : (
+          <Text style={styles.emptyText}>No apps are blocked right now.</Text>
+        )}
       </SectionCard>
 
       <Text style={styles.sectionLabel}>Manual Sessions</Text>
@@ -291,7 +379,7 @@ export function SettingsScreen(): React.JSX.Element {
                     if (__DEV__) {
                       console.warn('[SettingsScreen] End session action failed.', error);
                     }
-                  });
+                  }).finally(refreshLocksAfterAction);
                 }}
               />
             </View>
@@ -510,6 +598,19 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 12,
     marginTop: 2,
+  },
+  lockBadge: {
+    borderRadius: 999,
+    backgroundColor: '#FFF1F2',
+    borderWidth: 1,
+    borderColor: '#FECDD3',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  lockBadgeText: {
+    color: colors.danger,
+    fontSize: 11,
+    fontWeight: '800',
   },
   emptyText: {
     color: colors.textMuted,

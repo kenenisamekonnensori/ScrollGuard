@@ -13,6 +13,7 @@ import java.util.HashMap
     AppUsageModule::class,
     ScrollDetectionModule::class,
     AppBlockingModule::class,
+    LocalNotificationModule::class,
   ],
 )
 class ScrollGuardNativePackage : BaseReactPackage() {
@@ -21,6 +22,7 @@ class ScrollGuardNativePackage : BaseReactPackage() {
       AppUsageModule.NAME -> AppUsageModule(reactContext)
       ScrollDetectionModule.NAME -> ScrollDetectionModule(reactContext)
       AppBlockingModule.NAME -> AppBlockingModule(reactContext)
+      LocalNotificationModule.NAME -> LocalNotificationModule(reactContext)
       else -> null
     }
   }
@@ -50,6 +52,15 @@ class ScrollGuardNativePackage : BaseReactPackage() {
       moduleInfos[AppBlockingModule.NAME] = ReactModuleInfo(
         AppBlockingModule.NAME,
         AppBlockingModule::class.java.name,
+        false,
+        false,
+        false,
+        false,
+      )
+
+      moduleInfos[LocalNotificationModule.NAME] = ReactModuleInfo(
+        LocalNotificationModule.NAME,
+        LocalNotificationModule::class.java.name,
         false,
         false,
         false,

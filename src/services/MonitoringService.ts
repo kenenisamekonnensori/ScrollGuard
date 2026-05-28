@@ -9,6 +9,7 @@ import { scrollService } from './ScrollService';
 import { useUsageStore } from '../store/usageStore';
 import {
   hasActiveFocusSessions,
+  hasTrackingFocusSessions,
   hasTrackingFocusSessionForPackage,
   refreshFocusSessions,
 } from '../features/focus/focusSessionStore';
@@ -101,16 +102,19 @@ async function monitorTick(): Promise<void> {
 
   const dailyLimitEnabled = useSettingsStore.getState().userSettings.dailyLimitEnabled;
   const focusSessionsActive = hasActiveFocusSessions();
+  const trackingFocusSessionsActive = hasTrackingFocusSessions();
 
   if (!dailyLimitEnabled && !focusSessionsActive) {
     return;
   }
 
-  const usageSnapshot = await fetchTodayUsage();
-  useUsageStore.getState().setLastSyncedAt(Date.now());
+  if (dailyLimitEnabled || trackingFocusSessionsActive) {
+    const usageSnapshot = await fetchTodayUsage();
+    useUsageStore.getState().setLastSyncedAt(Date.now());
 
-  if (dailyLimitEnabled) {
-    await enforceDailyLimitBlocks(usageSnapshot);
+    if (dailyLimitEnabled) {
+      await enforceDailyLimitBlocks(usageSnapshot);
+    }
   }
 
   if (focusSessionsActive) {
@@ -396,7 +400,15 @@ export async function startMonitoring(): Promise<void> {
   isMonitoring = true;
   diagnostics.startedAtMs = Date.now();
 
-  startForegroundProtectionService();
+  try {
+    startForegroundProtectionService();
+  } catch (error) {
+    diagnostics.failedTicks += 1;
+    if (__DEV__) {
+      console.warn('[MonitoringService] Failed to start foreground protection service.', error);
+    }
+  }
+
   scrollService.startListening();
   setupForegroundListener();
 
@@ -414,7 +426,13 @@ export function stopMonitoring(): void {
   clearUsageTimeout();
 
   teardownForegroundListener();
-  stopForegroundProtectionService();
+  try {
+    stopForegroundProtectionService();
+  } catch (error) {
+    if (__DEV__) {
+      console.warn('[MonitoringService] Failed to stop foreground protection service.', error);
+    }
+  }
   scrollService.stopListening();
 }
 

@@ -36,6 +36,10 @@ type AppBlockingModuleContract = {
   getLockedUntil?: (packageName: string) => Promise<number | null>;
 };
 
+type LocalNotificationModuleContract = {
+  postLocalNotification?: (title: string, body: string) => Promise<boolean>;
+};
+
 type IOSNotificationPermissions = {
   alert?: boolean;
   badge?: boolean;
@@ -75,6 +79,11 @@ function getScrollDetectionModule(): ScrollDetectionModuleContract | undefined {
 
 function getAppBlockingModule(): AppBlockingModuleContract | undefined {
   return (NativeModules as { AppBlockingModule?: AppBlockingModuleContract }).AppBlockingModule;
+}
+
+function getLocalNotificationModule(): LocalNotificationModuleContract | undefined {
+  return (NativeModules as { LocalNotificationModule?: LocalNotificationModuleContract })
+    .LocalNotificationModule;
 }
 
 let usageAccessFallbackCache: { value: boolean; atMs: number } | null = null;
@@ -252,7 +261,13 @@ export async function areNotificationsEnabled(): Promise<boolean> {
  * Placeholder behavior: no-op when native module is unavailable.
  */
 export function startScrollDetection(): void {
-  getScrollDetectionModule()?.startScrollDetection?.();
+  try {
+    getScrollDetectionModule()?.startScrollDetection?.();
+  } catch (error) {
+    if (__DEV__) {
+      console.warn('[NativeBridgeService] Failed to start scroll detection.', error);
+    }
+  }
 }
 
 /**
@@ -260,21 +275,39 @@ export function startScrollDetection(): void {
  * Placeholder behavior: no-op when native module is unavailable.
  */
 export function stopScrollDetection(): void {
-  getScrollDetectionModule()?.stopScrollDetection?.();
+  try {
+    getScrollDetectionModule()?.stopScrollDetection?.();
+  } catch (error) {
+    if (__DEV__) {
+      console.warn('[NativeBridgeService] Failed to stop scroll detection.', error);
+    }
+  }
 }
 
 /**
  * Starts native foreground service that keeps blocker protection alive in background.
  */
 export function startForegroundProtectionService(): void {
-  getScrollDetectionModule()?.startForegroundProtectionService?.();
+  try {
+    getScrollDetectionModule()?.startForegroundProtectionService?.();
+  } catch (error) {
+    if (__DEV__) {
+      console.warn('[NativeBridgeService] Failed to start foreground protection.', error);
+    }
+  }
 }
 
 /**
  * Stops native foreground protection service.
  */
 export function stopForegroundProtectionService(): void {
-  getScrollDetectionModule()?.stopForegroundProtectionService?.();
+  try {
+    getScrollDetectionModule()?.stopForegroundProtectionService?.();
+  } catch (error) {
+    if (__DEV__) {
+      console.warn('[NativeBridgeService] Failed to stop foreground protection.', error);
+    }
+  }
 }
 
 /**
@@ -344,4 +377,18 @@ export async function getNativeLockedUntil(packageName: string): Promise<number 
   }
 
   return null;
+}
+
+/**
+ * Posts a local notification through ScrollGuard's own native module.
+ * Returns false when notifications are unavailable or disabled.
+ */
+export async function postLocalNotification(title: string, body: string): Promise<boolean> {
+  const localNotificationModule = getLocalNotificationModule();
+
+  if (localNotificationModule?.postLocalNotification) {
+    return localNotificationModule.postLocalNotification(title, body);
+  }
+
+  return false;
 }
