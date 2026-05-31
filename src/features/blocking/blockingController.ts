@@ -19,6 +19,7 @@ import {
 
 const LOCK_STATES_STORAGE_KEY = 'lockStates';
 const BLOCK_HISTORY_STORAGE_KEY = 'blockHistory';
+const WEEKLY_BLOCK_SUMMARY_STORAGE_KEY = 'weeklyBlockSummary.v1';
 
 type LockSource = 'focus' | 'dailyLimit';
 
@@ -34,6 +35,14 @@ type BlockHistoryItem = {
   source: LockSource;
   durationMinutes: number;
   createdAt: number;
+};
+
+export type WeeklyBlockSummary = {
+  weekStart: string;
+  updatedAt: number;
+  totalMinutes: number;
+  perAppMinutes: Record<string, number>;
+  daily: Record<string, { totalMinutes: number; perAppMinutes: Record<string, number> }>;
 };
 
 export type ResolvedAppLock = {
@@ -54,6 +63,108 @@ function sanitizeLockedUntil(value: unknown): number | undefined {
   }
 
   return Math.floor(value);
+}
+
+function toSafeWholeNumber(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    return 0;
+  }
+
+  return Math.floor(value);
+}
+
+function getLocalDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getStartOfWeek(now = new Date()): Date {
+  const startOfWeek = new Date(now);
+  startOfWeek.setHours(0, 0, 0, 0);
+  const dayIndex = startOfWeek.getDay();
+  const diff = (dayIndex + 6) % 7; // Monday as week start
+  startOfWeek.setDate(startOfWeek.getDate() - diff);
+  return startOfWeek;
+}
+
+function sanitizeNumberRecord(value: unknown): Record<string, number> {
+  if (!isObjectRecord(value)) {
+    return {};
+  }
+
+  return Object.entries(value).reduce<Record<string, number>>((accumulator, [key, rawValue]) => {
+    const safeValue = toSafeWholeNumber(rawValue);
+    if (safeValue > 0) {
+      accumulator[key] = safeValue;
+    }
+    return accumulator;
+  }, {});
+}
+
+function sanitizeWeeklyBlockSummary(value: unknown): WeeklyBlockSummary | undefined {
+  if (!isObjectRecord(value) || typeof value.weekStart !== 'string') {
+    return undefined;
+  }
+
+  const weekStart = value.weekStart;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {
+    return undefined;
+  }
+  const totalMinutes = toSafeWholeNumber(value.totalMinutes);
+  const updatedAt = toSafeWholeNumber(value.updatedAt);
+  const perAppMinutes = sanitizeNumberRecord(value.perAppMinutes);
+  const computedTotal =
+    totalMinutes > 0
+      ? totalMinutes
+      : Object.values(perAppMinutes).reduce((sum, minutes) => sum + minutes, 0);
+  const daily = isObjectRecord(value.daily) ? value.daily : {};
+  const normalizedDaily = Object.entries(daily).reduce<WeeklyBlockSummary['daily']>(
+    (accumulator, [dateKey, dailyValue]) => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
+        return accumulator;
+      }
+      if (!isObjectRecord(dailyValue)) {
+        return accumulator;
+      }
+
+      const perAppMinutesForDay = sanitizeNumberRecord(dailyValue.perAppMinutes);
+      const totalMinutesForDay = toSafeWholeNumber(dailyValue.totalMinutes);
+      const computedDailyTotal =
+        totalMinutesForDay > 0
+          ? totalMinutesForDay
+          : Object.values(perAppMinutesForDay).reduce((sum, minutes) => sum + minutes, 0);
+
+      if (computedDailyTotal > 0 || Object.keys(perAppMinutesForDay).length > 0) {
+        accumulator[dateKey] = {
+          totalMinutes: computedDailyTotal,
+          perAppMinutes: perAppMinutesForDay,
+        };
+      }
+
+      return accumulator;
+    },
+    {},
+  );
+
+  return {
+    weekStart,
+    updatedAt,
+    totalMinutes: computedTotal,
+    perAppMinutes,
+    daily: normalizedDaily,
+  };
+}
+
+function createEmptyWeeklyBlockSummary(weekStart: string, updatedAt = Date.now()): WeeklyBlockSummary {
+  return {
+    weekStart,
+    updatedAt,
+    totalMinutes: 0,
+    perAppMinutes: {},
+    daily: {},
+  };
 }
 
 function getPackageGroup(app: string): readonly string[] {
@@ -135,6 +246,75 @@ function writeBlockHistory(history: BlockHistoryItem[]): void {
   setValue(BLOCK_HISTORY_STORAGE_KEY, history.slice(-200));
 }
 
+function readWeeklyBlockSummary(): WeeklyBlockSummary | undefined {
+  const persisted = getValue<unknown>(WEEKLY_BLOCK_SUMMARY_STORAGE_KEY);
+  return sanitizeWeeklyBlockSummary(persisted);
+}
+
+function writeWeeklyBlockSummary(summary: WeeklyBlockSummary): void {
+  setValue(WEEKLY_BLOCK_SUMMARY_STORAGE_KEY, summary);
+}
+
+function applyWeeklySummaryUpdate(
+  summary: WeeklyBlockSummary,
+  app: string,
+  durationMinutes: number,
+  createdAt: number,
+): void {
+  const safeMinutes = toSafeWholeNumber(durationMinutes);
+  if (safeMinutes <= 0) {
+    return;
+  }
+
+  const canonicalApp = resolveCanonicalPackageName(app);
+  summary.totalMinutes += safeMinutes;
+  summary.perAppMinutes[canonicalApp] = (summary.perAppMinutes[canonicalApp] ?? 0) + safeMinutes;
+
+  const dateKey = getLocalDateKey(new Date(createdAt));
+  const existingDaily = summary.daily[dateKey] ?? { totalMinutes: 0, perAppMinutes: {} };
+  existingDaily.totalMinutes += safeMinutes;
+  existingDaily.perAppMinutes[canonicalApp] = (existingDaily.perAppMinutes[canonicalApp] ?? 0) + safeMinutes;
+  summary.daily[dateKey] = existingDaily;
+  summary.updatedAt = Math.max(summary.updatedAt, createdAt);
+}
+
+function buildWeeklySummaryFromHistory(history: BlockHistoryItem[], weekStart: Date): WeeklyBlockSummary {
+  const weekStartKey = getLocalDateKey(weekStart);
+  const summary = createEmptyWeeklyBlockSummary(weekStartKey);
+  const weekStartMs = weekStart.getTime();
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 7);
+  const weekEndMs = weekEnd.getTime();
+
+  history.forEach(item => {
+    if (item.createdAt < weekStartMs || item.createdAt >= weekEndMs) {
+      return;
+    }
+    applyWeeklySummaryUpdate(summary, item.app, item.durationMinutes, item.createdAt);
+  });
+
+  if (summary.updatedAt === 0) {
+    summary.updatedAt = Date.now();
+  }
+
+  return summary;
+}
+
+function updateWeeklyBlockSummary(history: BlockHistoryItem[], item: BlockHistoryItem): void {
+  const weekStart = getStartOfWeek(new Date(item.createdAt));
+  const weekStartKey = getLocalDateKey(weekStart);
+  const currentSummary = readWeeklyBlockSummary();
+
+  if (!currentSummary || currentSummary.weekStart !== weekStartKey) {
+    const rebuiltSummary = buildWeeklySummaryFromHistory(history, weekStart);
+    writeWeeklyBlockSummary(rebuiltSummary);
+    return;
+  }
+
+  applyWeeklySummaryUpdate(currentSummary, item.app, item.durationMinutes, item.createdAt);
+  writeWeeklyBlockSummary(currentSummary);
+}
+
 function recordBlockHistory(app: string, source: LockSource, durationMinutes: number): void {
   if (app !== resolveCanonicalPackageName(app)) {
     return;
@@ -152,6 +332,7 @@ function recordBlockHistory(app: string, source: LockSource, durationMinutes: nu
 
   currentHistory.push(item);
   writeBlockHistory(currentHistory);
+  updateWeeklyBlockSummary(currentHistory, item);
 }
 
 function pruneExpiredSources(lockState: LockSourceState, now = Date.now()): LockSourceState {
@@ -472,4 +653,30 @@ export async function enforceDailyLimitBlocks(
 
 export function getBlockHistory(): BlockHistoryItem[] {
   return readBlockHistory().sort((first, second) => first.createdAt - second.createdAt);
+}
+
+export function getWeeklyBlockSummary(): WeeklyBlockSummary {
+  const weekStart = getStartOfWeek();
+  const weekStartKey = getLocalDateKey(weekStart);
+  const currentSummary = readWeeklyBlockSummary();
+
+  if (currentSummary && currentSummary.weekStart === weekStartKey) {
+    return currentSummary;
+  }
+
+  return buildWeeklySummaryFromHistory(readBlockHistory(), weekStart);
+}
+
+export function ensureWeeklyBlockSummary(): WeeklyBlockSummary {
+  const weekStart = getStartOfWeek();
+  const weekStartKey = getLocalDateKey(weekStart);
+  const currentSummary = readWeeklyBlockSummary();
+
+  if (currentSummary && currentSummary.weekStart === weekStartKey) {
+    return currentSummary;
+  }
+
+  const rebuiltSummary = buildWeeklySummaryFromHistory(readBlockHistory(), weekStart);
+  writeWeeklyBlockSummary(rebuiltSummary);
+  return rebuiltSummary;
 }
