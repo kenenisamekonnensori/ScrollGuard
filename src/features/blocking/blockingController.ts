@@ -282,7 +282,9 @@ function buildWeeklySummaryFromHistory(history: BlockHistoryItem[], weekStart: D
   const weekStartKey = getLocalDateKey(weekStart);
   const summary = createEmptyWeeklyBlockSummary(weekStartKey);
   const weekStartMs = weekStart.getTime();
-  const weekEndMs = weekStartMs + 7 * 24 * 60 * 60 * 1000;
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 7);
+  const weekEndMs = weekEnd.getTime();
 
   history.forEach(item => {
     if (item.createdAt < weekStartMs || item.createdAt >= weekEndMs) {
@@ -654,6 +656,18 @@ export function getBlockHistory(): BlockHistoryItem[] {
 }
 
 export function getWeeklyBlockSummary(): WeeklyBlockSummary {
+  const weekStart = getStartOfWeek();
+  const weekStartKey = getLocalDateKey(weekStart);
+  const currentSummary = readWeeklyBlockSummary();
+
+  if (currentSummary && currentSummary.weekStart === weekStartKey) {
+    return currentSummary;
+  }
+
+  return buildWeeklySummaryFromHistory(readBlockHistory(), weekStart);
+}
+
+export function ensureWeeklyBlockSummary(): WeeklyBlockSummary {
   const weekStart = getStartOfWeek();
   const weekStartKey = getLocalDateKey(weekStart);
   const currentSummary = readWeeklyBlockSummary();

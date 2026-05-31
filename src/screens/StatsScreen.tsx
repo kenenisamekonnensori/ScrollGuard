@@ -2,7 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { AppScreen } from '../components/ui/AppScreen';
 import { SectionCard } from '../components/ui/SectionCard';
-import { getWeeklyBlockSummary } from '../features/blocking/blockingController';
+import { ensureWeeklyBlockSummary, getWeeklyBlockSummary } from '../features/blocking/blockingController';
 import { useUsageStore } from '../store/usageStore';
 import { colors } from '../theme/tokens';
 import { MONITORED_PACKAGES, MONITORED_PACKAGE_LIST, PACKAGE_LABELS } from '../utils/appPackages';
@@ -105,6 +105,10 @@ export function StatsScreen(): React.JSX.Element {
   const videoCounts = useUsageStore(state => state.videoCounts);
   const dailyHistory = useUsageStore(state => state.dailyHistory);
   const weeklyBlockSummary = getWeeklyBlockSummary();
+
+  React.useEffect(() => {
+    ensureWeeklyBlockSummary();
+  }, [dailyHistory]);
 
   const dailyMinutes = Object.values(usageStats).reduce((total, value) => total + toMinutes(value), 0);
   const totalVideos = Object.values(videoCounts).reduce((total, value) => total + value, 0);
