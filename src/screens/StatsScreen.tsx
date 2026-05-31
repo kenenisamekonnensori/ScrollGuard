@@ -2,11 +2,17 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { AppScreen } from '../components/ui/AppScreen';
 import { SectionCard } from '../components/ui/SectionCard';
-import { getBlockHistory } from '../features/blocking/blockingController';
+import { getWeeklyBlockSummary } from '../features/blocking/blockingController';
 import { useUsageStore } from '../store/usageStore';
 import { colors } from '../theme/tokens';
-import { MONITORED_PACKAGE_LIST, PACKAGE_LABELS } from '../utils/appPackages';
+import { MONITORED_PACKAGES, MONITORED_PACKAGE_LIST, PACKAGE_LABELS } from '../utils/appPackages';
 import { toMinutes } from '../utils/time';
+
+const APP_USAGE_COLORS: Record<string, string> = {
+  [MONITORED_PACKAGES.tiktok]: '#21C8E6',
+  [MONITORED_PACKAGES.instagram]: '#5E8DF7',
+  [MONITORED_PACKAGES.youtube]: '#7B8797',
+};
 
 function formatMinutes(minutes: number): string {
   if (minutes >= 60) {
@@ -25,12 +31,17 @@ function getLocalDateKey(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-function isWithinCurrentWeek(timestamp: number): boolean {
-  const now = new Date();
+function getStartOfWeek(now = new Date()): Date {
   const startOfWeek = new Date(now);
   startOfWeek.setHours(0, 0, 0, 0);
-  startOfWeek.setDate(startOfWeek.getDate() - 6);
-  return timestamp >= startOfWeek.getTime();
+  const dayIndex = startOfWeek.getDay();
+  const diff = (dayIndex + 6) % 7; // Monday as week start
+  startOfWeek.setDate(startOfWeek.getDate() - diff);
+  return startOfWeek;
+}
+
+function getAppColor(packageName: string): string {
+  return APP_USAGE_COLORS[packageName] ?? colors.primary;
 }
 
 function buildLastSevenDaysHistory(
@@ -57,29 +68,60 @@ function buildLastSevenDaysHistory(
   return days;
 }
 
+function buildCurrentWeekUsage(
+  dailyHistory: ReturnType<typeof useUsageStore.getState>['dailyHistory'],
+): Array<{ date: string; totalMinutes: number; dayLabel: string; appMinutes: Record<string, number> }> {
+  const historyByDate = new Map(dailyHistory.map(snapshot => [snapshot.date, snapshot]));
+  const startOfWeek = getStartOfWeek();
+  const days: Array<{ date: string; totalMinutes: number; dayLabel: string; appMinutes: Record<string, number> }> = [];
+
+  for (let offset = 0; offset < 7; offset += 1) {
+    const date = new Date(startOfWeek);
+    date.setDate(startOfWeek.getDate() + offset);
+    const dateKey = getLocalDateKey(date);
+    const snapshot = historyByDate.get(dateKey);
+    const appMinutes: Record<string, number> = {};
+    let totalMinutes = 0;
+
+    MONITORED_PACKAGE_LIST.forEach(packageName => {
+      const minutes = toMinutes(snapshot?.usageStats?.[packageName] ?? 0);
+      appMinutes[packageName] = minutes;
+      totalMinutes += minutes;
+    });
+
+    days.push({
+      date: dateKey,
+      totalMinutes,
+      dayLabel: date.toLocaleDateString(undefined, { weekday: 'narrow' }),
+      appMinutes,
+    });
+  }
+
+  return days;
+}
+
 export function StatsScreen(): React.JSX.Element {
   const usageStats = useUsageStore(state => state.usageStats);
   const videoCounts = useUsageStore(state => state.videoCounts);
   const dailyHistory = useUsageStore(state => state.dailyHistory);
-  const blockHistory = getBlockHistory();
+  const weeklyBlockSummary = getWeeklyBlockSummary();
 
   const dailyMinutes = Object.values(usageStats).reduce((total, value) => total + toMinutes(value), 0);
   const totalVideos = Object.values(videoCounts).reduce((total, value) => total + value, 0);
   const fullWeekHistory = buildLastSevenDaysHistory(dailyHistory);
-  const weeklyMinutes = fullWeekHistory.reduce((total, item) => total + item.minutes, 0);
+  const weeklyUsageSummary = buildCurrentWeekUsage(dailyHistory);
+  const weeklyMinutes = weeklyUsageSummary.reduce((total, item) => total + item.totalMinutes, 0);
   const previousAverageMinutes =
     fullWeekHistory.length > 1
       ? Math.round(
-          fullWeekHistory
-            .slice(0, -1)
-            .reduce((total, snapshot) => total + snapshot.minutes, 0)
+            fullWeekHistory
+              .slice(0, -1)
+              .reduce((total, snapshot) => total + snapshot.minutes, 0)
             / (fullWeekHistory.length - 1),
         )
       : dailyMinutes;
-  const weeklySavedMinutes = blockHistory
-    .filter(item => isWithinCurrentWeek(item.createdAt))
-    .reduce((total, item) => total + item.durationMinutes, 0);
-  const chartMaxMinutes = Math.max(...fullWeekHistory.map(snapshot => snapshot.minutes), 1);
+  const weeklySavedMinutes = weeklyBlockSummary.totalMinutes;
+  const chartMaxMinutes = Math.max(...weeklyUsageSummary.map(snapshot => snapshot.totalMinutes), 1);
   const streakDays = (() => {
     let streak = 0;
     const reversed = [...fullWeekHistory].reverse();
@@ -102,7 +144,6 @@ export function StatsScreen(): React.JSX.Element {
       percent: dailyMinutes > 0 ? Math.round((minutes / dailyMinutes) * 100) : 0,
     };
   });
-  const chartSummary = fullWeekHistory;
 
   return (
     <AppScreen>
@@ -127,57 +168,77 @@ export function StatsScreen(): React.JSX.Element {
           <Text style={styles.metricLabel}>Time Saved This Week</Text>
           <Text style={styles.metricValue}>{formatMinutes(weeklySavedMinutes)}</Text>
           <Text style={styles.metricTrendGood}>
-            {weeklySavedMinutes > 0 ? `Blocked ${weeklySavedMinutes} min this week` : 'No blocks recorded yet'}
+            {weeklySavedMinutes > 0
+              ? `Blocked ${formatMinutes(weeklySavedMinutes)} this week`
+              : 'No blocks recorded yet'}
           </Text>
         </SectionCard>
       </View>
 
       <SectionCard title="Weekly Scrolling Time">
-        <Text style={styles.weeklyMeta}>Total: {weeklyMinutes} minutes in the last 7 days</Text>
+        <Text style={styles.weeklyMeta}>Total: {weeklyMinutes} minutes this week</Text>
         <View style={styles.weekChartWrap}>
-          {chartSummary.length > 0 ? (
-            chartSummary.map(item => (
+          {weeklyUsageSummary.map(item => {
+            const barHeightPercent =
+              item.totalMinutes > 0
+                ? Math.max((item.totalMinutes / chartMaxMinutes) * 100, 12)
+                : 0;
+
+            return (
               <View key={item.date} style={styles.weekChartCol}>
                 <View style={styles.weekChartTrack}>
-                  <View
-                    style={[
-                      styles.weekChartFill,
-                      { height: `${Math.max((item.minutes / chartMaxMinutes) * 100, item.minutes > 0 ? 12 : 0)}%` },
-                    ]}
-                  />
+                  <View style={[styles.weekChartStack, { height: `${barHeightPercent}%` }]}>
+                    {MONITORED_PACKAGE_LIST.map(packageName => {
+                      const minutes = item.appMinutes[packageName] ?? 0;
+                      if (minutes <= 0) {
+                        return null;
+                      }
+
+                      return (
+                        <View
+                          key={`${item.date}-${packageName}`}
+                          style={[
+                            styles.weekChartSegment,
+                            { flex: minutes, backgroundColor: getAppColor(packageName) },
+                          ]}
+                        />
+                      );
+                    })}
+                  </View>
                 </View>
                 <Text style={styles.weekChartLabel}>{item.dayLabel}</Text>
               </View>
-            ))
-          ) : (
-            <Text style={styles.emptyText}>No local weekly history yet.</Text>
-          )}
+            );
+          })}
+        </View>
+        <View style={styles.weekLegendRow}>
+          {MONITORED_PACKAGE_LIST.map(packageName => (
+            <View key={`week-legend-${packageName}`} style={styles.weekLegendItem}>
+              <View style={[styles.weekLegendSwatch, { backgroundColor: getAppColor(packageName) }]} />
+              <Text style={styles.weekLegendLabel}>{PACKAGE_LABELS[packageName] ?? packageName}</Text>
+            </View>
+          ))}
         </View>
       </SectionCard>
 
       <SectionCard title="App Comparison">
         <View style={styles.comparisonTrack}>
-          {appRows.map((row, index) => (
+          {appRows.map(row => (
             <View
               key={`segment-${row.packageName}`}
               style={[
                 styles.comparisonSegment,
-                index === 0 ? styles.legendDotCyan : index === 1 ? styles.legendDotBlue : styles.legendDotSlate,
+                { backgroundColor: getAppColor(row.packageName) },
                 { flex: Math.max(row.minutes, dailyMinutes === 0 ? 1 : 0) },
               ]}
             />
           ))}
         </View>
 
-        {appRows.map((row, index) => (
+        {appRows.map(row => (
           <View key={row.packageName} style={styles.legendRow}>
             <View style={styles.legendLeft}>
-              <View
-                style={[
-                  styles.legendDot,
-                  index === 0 ? styles.legendDotCyan : index === 1 ? styles.legendDotBlue : styles.legendDotSlate,
-                ]}
-              />
+              <View style={[styles.legendDot, { backgroundColor: getAppColor(row.packageName) }]} />
               <Text style={styles.legendLabel}>{row.appName}</Text>
             </View>
             <Text style={styles.legendValue}>{row.percent}% • {formatMinutes(row.minutes)}</Text>
@@ -263,15 +324,40 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     overflow: 'hidden',
   },
-  weekChartFill: {
+  weekChartStack: {
     width: '100%',
     borderRadius: 999,
-    backgroundColor: colors.primary,
+    overflow: 'hidden',
+    flexDirection: 'column-reverse',
+  },
+  weekChartSegment: {
+    width: '100%',
   },
   weekChartLabel: {
     color: '#74869B',
     fontSize: 11,
     fontWeight: '700',
+  },
+  weekLegendRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 12,
+  },
+  weekLegendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  weekLegendSwatch: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  weekLegendLabel: {
+    color: '#5C6F82',
+    fontSize: 12,
+    fontWeight: '600',
   },
   comparisonTrack: {
     height: 20,
